@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# NASA Data files (Bronze / Silver)
+data/raw/*
+!data/raw/.gitkeep
+data/bronze_raw/*
+data/silver_processed/*
+!data/silver_processed/.gitkeep
+data/*.png
+data/*.html
+data/*.db
+data/.urs_cookies
+
+# ML Model weights
+models/*.pkl
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
