@@ -1,27 +1,32 @@
-# Python
+# Python & Environments
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
 .env
+.env.production
+.env.local
 
-# NASA Data files (Bronze / Silver)
-data/raw/*
-!data/raw/.gitkeep
-data/bronze_raw/*
-data/silver_processed/*
-!data/silver_processed/.gitkeep
-data/*.png
-data/*.html
-data/*.db
-data/.urs_cookies
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Data files & Storage
+data/
+*.he5
+*.nc
+*.h5
+*.db
+*.sqlite3
+.urs_cookies
 
 # ML Model weights
 models/*.pkl
+services/prediction/models/*.pkl
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-

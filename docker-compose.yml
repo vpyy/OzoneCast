@@ -1,0 +1,150 @@
+version: '3.8'
+
+# ============================================================
+#  Ozone Monitoring System — Docker Compose
+#  Architecture (sơ đồ khối):
+#    Data Source ← [5 phút] ← Data Ingestion → Database
+#    Database API (sole entry point to PostgreSQL)
+#    Backend Services (read & write via Database API):
+#      Data Analysis  → every 5 minutes
+#      Clustering     → every 1 day
+#      Prediction     → every 5 minutes
+#    Frontend         → Database API
+# ============================================================
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: ozone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ozone_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ozone_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ozone-network
+
+  # ── Database API (sole gateway to PostgreSQL) ─────────────
+  database-api:
+    build:
+      context: ./services/database-api
+      dockerfile: Dockerfile
+    container_name: ozone-database-api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ozone-network
+
+  # ── Data Ingestion (every 5 min — NASA CMR → database-api) ─
+  data-ingestion:
+    build:
+      context: ./services/data-ingestion
+      dockerfile: Dockerfile
+    container_name: ozone-data-ingestion
+    restart: unless-stopped
+    environment:
+      - DATABASE_API_URL=http://database-api:8001
+      - NASA_USERNAME=${NASA_USERNAME}
+      - NASA_PASSWORD=${NASA_PASSWORD}
+    ports:
+      - "8002:8002"
+    depends_on:
+      - database-api
+    networks:
+      - ozone-network
+
+  # ── Data Analysis (every 5 min — QC, binning, anomalies) ──
+  data-analysis:
+    build:
+      context: ./services/data-analysis
+      dockerfile: Dockerfile
+    container_name: ozone-data-analysis
+    restart: unless-stopped
+    environment:
+      - DATABASE_API_URL=http://database-api:8001
+    ports:
+      - "8003:8003"
+    depends_on:
+      - database-api
+    networks:
+      - ozone-network
+
+  # ── Clustering (every 1 day — DBSCAN / KMeans) ─────────────
+  clustering:
+    build:
+      context: ./services/clustering
+      dockerfile: Dockerfile
+    container_name: ozone-clustering
+    restart: unless-stopped
+    environment:
+      - DATABASE_API_URL=http://database-api:8001
+    ports:
+      - "8004:8004"
+    depends_on:
+      - database-api
+    networks:
+      - ozone-network
+
+  # ── Prediction (every 5 min — RandomForest retrain) ────────
+  prediction:
+    build:
+      context: ./services/prediction
+      dockerfile: Dockerfile
+    container_name: ozone-prediction
+    restart: unless-stopped
+    environment:
+      - DATABASE_API_URL=http://database-api:8001
+    ports:
+      - "8005:8005"
+    depends_on:
+      - database-api
+    networks:
+      - ozone-network
+
+  # ── Frontend (React + Vite + Tailwind) ─────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ozone-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_DB_API_URL=http://localhost:8001
+      - VITE_INGEST_API_URL=http://localhost:8002
+      - VITE_ANALYSIS_API_URL=http://localhost:8003
+      - VITE_CLUSTERING_API_URL=http://localhost:8004
+      - VITE_PREDICTION_API_URL=http://localhost:8005
+    ports:
+      - "3000:3000"
+    depends_on:
+      - database-api
+      - data-ingestion
+      - data-analysis
+      - clustering
+      - prediction
+    networks:
+      - ozone-network
+
+volumes:
+  postgres_data:    # PostgreSQL persistent storage
+
+networks:
+  ozone-network:
+    driver: bridge
