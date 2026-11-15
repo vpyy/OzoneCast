@@ -1,25 +1,26 @@
+import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from .database import engine, Base, get_db
-from .models import Granule, RawMeasurement, OzoneGridSummary, OzoneAnomaly, ClusterResult
+from .models import Granule, RawMeasurement, OzoneGridSummary, OzoneAnomaly, ClusterResult, SystemAnalysisCache
 from .schemas import (
     GranuleCreate, GranuleResponse,
     RawMeasurementBulkCreate, RawMeasurementResponse,
     GridSummaryBulkCreate, GridSummaryResponse,
-    AnomalyCreate, ClusterBulkCreate
+    AnomalyCreate, ClusterBulkCreate, CacheUpsertRequest
 )
 
-Base.metadata.create_all(bind=engine)
+import time
 
 app = FastAPI(
     title="Ozone Database Microservice API",
-    version="1.0.0",
-    description="Central Database REST API for NASA Ozone Satellite Data System"
+    version="2.0.0",
+    description="Central Database REST API for NASA Ozone Satellite Data System & Analytics"
 )
 
 app.add_middleware(
@@ -29,6 +30,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def init_db():
+    # Robust retry connection to PostgreSQL on container startup
+    retries = 5
+    while retries > 0:
+        try:
+            Base.metadata.create_all(bind=engine)
+            print("[DATABASE-API] Successfully connected and verified database tables.")
+            break
+        except Exception as e:
+            print(f"[DATABASE-API WARN] Waiting for database connection... ({e})")
+            retries -= 1
+            time.sleep(2)
 
 @app.get("/health")
 def health_check():
@@ -81,6 +96,9 @@ def insert_raw_bulk(payload: RawMeasurementBulkCreate, db: Session = Depends(get
             latitude=it.latitude,
             longitude=it.longitude,
             ozone_column_raw=it.ozone_column_raw,
+            reflectivity331=it.reflectivity331 or 0.0,
+            uv_aerosol_index=it.uv_aerosol_index or 0.0,
+            solar_zenith_angle=it.solar_zenith_angle or 0.0,
             quality_flag=it.quality_flag,
             time_raw=it.time_raw
         )
@@ -88,7 +106,7 @@ def insert_raw_bulk(payload: RawMeasurementBulkCreate, db: Session = Depends(get
     ]
     db.bulk_save_objects(objects)
     db.commit()
-    return {"message": f"Successfully inserted {len(objects)} raw measurement points."}
+    return {"message": f"Successfully inserted {len(objects)} raw measurement points with expanded variables."}
 
 # --- Grid Summary API ---
 @app.get("/api/grid-summary", response_model=List[GridSummaryResponse])
@@ -106,6 +124,8 @@ def insert_grid_bulk(payload: GridSummaryBulkCreate, db: Session = Depends(get_d
             ozone_column_mean=it.ozone_column_mean,
             ozone_column_min=it.ozone_column_min,
             ozone_column_max=it.ozone_column_max,
+            reflectivity_mean=it.reflectivity_mean or 0.0,
+            uv_aerosol_mean=it.uv_aerosol_mean or 0.0,
             valid_pixel_count=it.valid_pixel_count
         )
         for it in payload.items
@@ -114,7 +134,7 @@ def insert_grid_bulk(payload: GridSummaryBulkCreate, db: Session = Depends(get_d
     db.commit()
     return {"message": f"Successfully inserted {len(objects)} grid summary cells."}
 
-# --- Anomalies & Clusters ---
+# --- Anomalies ---
 @app.get("/api/anomalies")
 def get_anomalies(limit: int = 100, db: Session = Depends(get_db)):
     return db.query(OzoneAnomaly).order_by(OzoneAnomaly.timestamp.desc()).limit(limit).all()
@@ -127,16 +147,74 @@ def create_anomaly(item: AnomalyCreate, db: Session = Depends(get_db)):
     db.refresh(record)
     return record
 
+# --- Clusters API ---
 @app.get("/api/clusters")
-def get_clusters(limit: int = 200, db: Session = Depends(get_db)):
+def get_clusters(limit: int = 300, db: Session = Depends(get_db)):
     return db.query(ClusterResult).order_by(ClusterResult.run_timestamp.desc()).limit(limit).all()
 
 @app.post("/api/clusters/bulk")
 def insert_clusters(payload: ClusterBulkCreate, db: Session = Depends(get_db)):
+    # Clear old cluster points or append latest
+    db.query(ClusterResult).delete()
     objs = [ClusterResult(**it.model_dump()) for it in payload.items]
     db.bulk_save_objects(objs)
     db.commit()
-    return {"message": f"Inserted {len(objs)} cluster data points"}
+    return {"message": f"Saved {len(objs)} cluster data points with atmospheric/surface characteristics"}
+
+# --- Generic Cache / Analysis Report Storage ---
+@app.get("/api/cache/{cache_key}")
+def get_cache_entry(cache_key: str, db: Session = Depends(get_db)):
+    row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == cache_key).first()
+    if not row:
+        return None
+    try:
+        return json.loads(row.payload_json)
+    except Exception:
+        return {"raw": row.payload_json}
+
+@app.post("/api/cache/{cache_key}")
+def set_cache_entry(cache_key: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+    row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == cache_key).first()
+    payload_str = json.dumps(payload, default=str)
+    if row:
+        row.payload_json = payload_str
+        row.updated_at = datetime.utcnow()
+    else:
+        row = SystemAnalysisCache(cache_key=cache_key, payload_json=payload_str)
+        db.add(row)
+    db.commit()
+    return {"status": "ok", "cache_key": cache_key}
+
+# --- Analytics endpoints consumed by Front End ---
+@app.get("/api/analysis/timeseries")
+def get_timeseries_analysis(period: str = "day", db: Session = Depends(get_db)):
+    if period not in ["day", "week", "month"]:
+        period = "day"
+    cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == f"timeseries_{period}").first()
+    if cache_row:
+        return json.loads(cache_row.payload_json)
+    return None
+
+@app.get("/api/analysis/trend-seasonal")
+def get_trend_seasonal(db: Session = Depends(get_db)):
+    cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "trend_seasonal").first()
+    if cache_row:
+        return json.loads(cache_row.payload_json)
+    return None
+
+@app.get("/api/analysis/correlation-matrix")
+def get_correlation_matrix(db: Session = Depends(get_db)):
+    cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "correlation_matrix").first()
+    if cache_row:
+        return json.loads(cache_row.payload_json)
+    return None
+
+@app.get("/api/prediction/tomorrow")
+def get_tomorrow_prediction(db: Session = Depends(get_db)):
+    cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "prediction_tomorrow").first()
+    if cache_row:
+        return json.loads(cache_row.payload_json)
+    return None
 
 # --- Dashboard Stats API ---
 @app.get("/api/stats")
@@ -145,7 +223,6 @@ def get_system_stats(db: Session = Depends(get_db)):
     total_raw = db.query(func.count(RawMeasurement.id)).scalar() or 0
     total_grid = db.query(func.count(OzoneGridSummary.id)).scalar() or 0
     
-    # Calculate ozone statistics from processed grid
     avg_ozone = db.query(func.avg(OzoneGridSummary.ozone_column_mean)).scalar() or 290.0
     min_ozone = db.query(func.min(OzoneGridSummary.ozone_column_min)).scalar() or 180.0
     max_ozone = db.query(func.max(OzoneGridSummary.ozone_column_max)).scalar() or 450.0
@@ -161,4 +238,3 @@ def get_system_stats(db: Session = Depends(get_db)):
         "anomalies_detected": anomaly_count,
         "last_updated": datetime.utcnow().isoformat()
     }
-

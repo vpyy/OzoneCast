@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ============================================================
 #  Ozone Monitoring System — Docker Compose
 #  Architecture (sơ đồ khối):

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 class GranuleBase(BaseModel):
@@ -28,6 +28,9 @@ class RawMeasurementItem(BaseModel):
     latitude: float
     longitude: float
     ozone_column_raw: float
+    reflectivity331: Optional[float] = 0.0
+    uv_aerosol_index: Optional[float] = 0.0
+    solar_zenith_angle: Optional[float] = 0.0
     quality_flag: int = 0
     time_raw: float = 0.0
 
@@ -42,6 +45,9 @@ class RawMeasurementResponse(BaseModel):
     latitude: float
     longitude: float
     ozone_column_raw: float
+    reflectivity331: Optional[float] = 0.0
+    uv_aerosol_index: Optional[float] = 0.0
+    solar_zenith_angle: Optional[float] = 0.0
     quality_flag: int
     time_raw: float
     created_at: datetime
@@ -56,6 +62,8 @@ class GridSummaryItem(BaseModel):
     ozone_column_mean: float
     ozone_column_min: Optional[float] = None
     ozone_column_max: Optional[float] = None
+    reflectivity_mean: Optional[float] = 0.0
+    uv_aerosol_mean: Optional[float] = 0.0
     valid_pixel_count: int = 1
 
 class GridSummaryBulkCreate(BaseModel):
@@ -74,14 +82,19 @@ class AnomalyCreate(BaseModel):
     description: Optional[str] = None
 
 class ClusterItem(BaseModel):
-    algorithm: str
+    algorithm: str = "KMeans"
     cluster_id: int
     latitude: float
     longitude: float
     mean_ozone: float
+    mean_reflectivity: Optional[float] = 0.0
     point_count: int
     tag: Optional[str] = None
+    characteristic: Optional[str] = None
 
 class ClusterBulkCreate(BaseModel):
     items: List[ClusterItem]
 
+class CacheUpsertRequest(BaseModel):
+    cache_key: str
+    payload: Dict[str, Any]

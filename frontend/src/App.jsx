@@ -5,6 +5,9 @@ import OzoneMap from './components/OzoneMap';
 import RawDataTable from './components/RawDataTable';
 import ClusteringPanel from './components/ClusteringPanel';
 import PredictionPanel from './components/PredictionPanel';
+import AnalyticsCharts from './components/AnalyticsCharts';
+import TrendSeasonalCorrelation from './components/TrendSeasonalCorrelation';
+import TomorrowPredictionCard from './components/TomorrowPredictionCard';
 import { api } from './api/apiClient';
 
 export default function App() {
@@ -25,7 +28,7 @@ export default function App() {
         api.getGranules(),
         api.getRawMeasurements(250),
         api.getGridSummary(500),
-        api.getClusters(150)
+        api.getClusters(200)
       ]);
 
       if (statsRes.status === 'fulfilled') setStats(statsRes.value);
@@ -45,7 +48,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-100 flex flex-row font-sans">
+      {/* ── Left Sidebar Navigation ── */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -53,61 +57,84 @@ export default function App() {
         loading={loading}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        <DashboardStats stats={stats} />
+      {/* ── Main Dashboard Workspace ── */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen overflow-y-auto">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+          {/* Top Metric Cards */}
+          <DashboardStats stats={stats} />
 
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200">
-              <span className="text-xs font-semibold text-slate-600">Map Display Layer:</span>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setMapMode('grid')}
-                  className={`px-3 py-1 rounded text-xs font-medium ${
-                    mapMode === 'grid' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  Silver Grid Mean ({gridData.length} cells)
-                </button>
-                <button
-                  onClick={() => setMapMode('raw')}
-                  className={`px-3 py-1 rounded text-xs font-medium ${
-                    mapMode === 'raw' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  Raw Swath Points ({rawData.length} points)
-                </button>
+          {/* Tab 1: Bản đồ & Tổng quan */}
+          {activeTab === 'overview' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+                <span className="text-xs font-semibold text-slate-700">Hiển thị Layer Bản đồ Tương tác:</span>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setMapMode('grid')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      mapMode === 'grid' ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Lưới Silver 0.5° ({gridData.length} ô)
+                  </button>
+                  <button
+                    onClick={() => setMapMode('raw')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      mapMode === 'raw' ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Điểm Thô Vệ tinh Swath ({rawData.length} điểm)
+                  </button>
+                </div>
               </div>
+
+              <OzoneMap gridData={gridData} rawData={rawData} mode={mapMode} />
+
+              {/* Quick Tomorrow Prediction Preview */}
+              <TomorrowPredictionCard />
             </div>
+          )}
 
-            <OzoneMap gridData={gridData} rawData={rawData} mode={mapMode} />
-          </div>
-        )}
+          {/* Tab 2: Bộ 3 Biểu đồ Chuỗi thời gian (Line, Scatter, Histogram) */}
+          {activeTab === 'analytics' && (
+            <AnalyticsCharts />
+          )}
 
-        {activeTab === 'raw' && (
-          <RawDataTable
-            rawData={rawData}
-            granules={granules}
-            onDataMutated={loadAllData}
-          />
-        )}
+          {/* Tab 3: Xu hướng Trend, Mùa vụ Seasonal & Heatmap Tương quan */}
+          {activeTab === 'trend_corr' && (
+            <TrendSeasonalCorrelation />
+          )}
 
-        {activeTab === 'clustering' && (
-          <ClusteringPanel
-            clusters={clusters}
-            onClustersUpdated={loadAllData}
-          />
-        )}
+          {/* Tab 4: Phân cụm Khu vực (Clustering) */}
+          {activeTab === 'clustering' && (
+            <ClusteringPanel
+              clusters={clusters}
+              onClustersUpdated={loadAllData}
+            />
+          )}
 
-        {activeTab === 'prediction' && (
-          <PredictionPanel />
-        )}
-      </main>
+          {/* Tab 5: Dự báo Ngày mai & Máy học */}
+          {activeTab === 'prediction' && (
+            <div className="space-y-6">
+              <TomorrowPredictionCard />
+              <PredictionPanel />
+            </div>
+          )}
 
-      <footer className="bg-slate-900 border-t border-slate-800 text-slate-400 text-xs py-4 text-center">
-        NASA Ozone Satellite Monitoring System &bull; Microservices & Docker Architecture &bull; 2026
-      </footer>
+          {/* Tab 6: Bảng Dữ liệu Thô (7 Trường) */}
+          {activeTab === 'raw' && (
+            <RawDataTable
+              rawData={rawData}
+              granules={granules}
+              onDataMutated={loadAllData}
+            />
+          )}
+        </main>
+
+        <footer className="bg-white border-t border-slate-200 text-slate-500 text-xs py-4 text-center">
+          NASA Ozone Satellite Monitoring System &bull; Microservices & Docker Architecture &bull; 2026
+        </footer>
+      </div>
     </div>
   );
 }
-

@@ -26,10 +26,13 @@ class RawMeasurement(Base):
     point_index = Column(Integer, nullable=False)
     latitude = Column(Float, nullable=False, index=True)
     longitude = Column(Float, nullable=False, index=True)
-    ozone_column_raw = Column(Float, nullable=False)
+    ozone_column_raw = Column(Float, nullable=False)          # ColumnAmountO3 (DU)
+    reflectivity331 = Column(Float, default=0.0)              # Độ phản xạ 331nm (%)
+    uv_aerosol_index = Column(Float, default=0.0)             # Chỉ số UV Aerosol Index
+    solar_zenith_angle = Column(Float, default=0.0)           # Góc thiên đỉnh mặt trời (độ)
     quality_flag = Column(Integer, default=0)
     time_raw = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 class OzoneGridSummary(Base):
     __tablename__ = "ozone_grid_summary"
@@ -42,6 +45,8 @@ class OzoneGridSummary(Base):
     ozone_column_mean = Column(Float, nullable=False)
     ozone_column_min = Column(Float, nullable=True)
     ozone_column_max = Column(Float, nullable=True)
+    reflectivity_mean = Column(Float, default=0.0)
+    uv_aerosol_mean = Column(Float, default=0.0)
     valid_pixel_count = Column(Integer, default=1)
 
 class OzoneAnomaly(Base):
@@ -60,11 +65,21 @@ class ClusterResult(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_timestamp = Column(DateTime, default=datetime.utcnow)
-    algorithm = Column(String(50), default="DBSCAN")
+    algorithm = Column(String(50), default="KMeans")
     cluster_id = Column(Integer, nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     mean_ozone = Column(Float, nullable=False)
+    mean_reflectivity = Column(Float, default=0.0)
     point_count = Column(Integer, default=1)
     tag = Column(String(50), nullable=True)
+    characteristic = Column(String(255), nullable=True) # Mô tả vùng: Mây/băng tuyết, vùng thông thường, vùng suy giảm
 
+class SystemAnalysisCache(Base):
+    """Lưu trữ kết quả phân tích chuỗi thời gian, tương quan và dự báo cho Front End đọc trực tiếp."""
+    __tablename__ = "system_analysis_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key = Column(String(100), unique=True, index=True) # e.g. 'timeseries_day', 'correlation_matrix', 'prediction_tomorrow'
+    payload_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
