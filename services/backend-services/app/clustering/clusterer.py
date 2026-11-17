@@ -7,7 +7,7 @@ import requests
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler
 
-DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8001")
+DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
 
 class OzoneClusterer:
     @staticmethod

@@ -9,7 +9,7 @@ import requests
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score
 
-DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8001")
+DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
 MODEL_DIR = Path("/app/models")
 
 class OzonePredictionModel:

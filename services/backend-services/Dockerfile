@@ -9,9 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Thư mục lưu model .pkl (persist qua restart nếu mount volume)
+RUN mkdir -p /app/models
+
 COPY app/ ./app/
 
-EXPOSE 8004
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004"]
-
+# Không expose port — service này không có HTTP API
+CMD ["python", "-m", "app.main"]

@@ -1,122 +1,107 @@
-# ============================================================
-#  Ozone Monitoring System — Docker Compose
-#  Architecture (sơ đồ khối):
-#    Data Source ← [5 phút] ← Data Ingestion → Database
-#    Database API (sole entry point to PostgreSQL)
-#    Backend Services (read & write via Database API):
-#      Data Analysis  → every 5 minutes
-#      Clustering     → every 1 day
-#      Prediction     → every 5 minutes
-#    Frontend         → Database API
-# ============================================================
+# =============================================================================
+#  OzoneCast — Docker Compose
+#  Kiến trúc microservice:
+#    postgres         → Database PostgreSQL 16
+#    database-api     → FastAPI REST API (sole gateway to PostgreSQL) :8000
+#    data-ingestion   → Scheduler: NASA CMR → database-api             :8002
+#    backend-services → Scheduler: Analysis + Clustering + Prediction
+#    frontend         → React + Vite                                   :3000
+#
+#  Khởi chạy:
+#    cp .env.example .env          # điền NASA_USERNAME, NASA_PASSWORD
+#    docker compose up --build
+# =============================================================================
 
 services:
 
-  # ── PostgreSQL ────────────────────────────────────────────
+  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16
     container_name: ozone-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-ozone_db}
+      POSTGRES_DB:       ${POSTGRES_DB:-ozone_db}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ozone_db}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     networks:
-      - ozone-network
+      - ozonecast-net
 
-  # ── Database API (sole gateway to PostgreSQL) ─────────────
+  # ── Database API (FastAPI + SQLAlchemy) ─────────────────────────────────────
   database-api:
     build:
       context: ./services/database-api
       dockerfile: Dockerfile
     container_name: ozone-database-api
     restart: unless-stopped
+    env_file:
+      - ./services/database-api/.env.example   # rename to .env in production
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
     ports:
-      - "8001:8001"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - ozone-network
+      - ozonecast-net
 
-  # ── Data Ingestion (every 5 min — NASA CMR → database-api) ─
+  # ── Data Ingestion (NASA HDF5/HE5 → PostgreSQL, every 5 min) ────────────────
   data-ingestion:
     build:
       context: ./services/data-ingestion
       dockerfile: Dockerfile
     container_name: ozone-data-ingestion
     restart: unless-stopped
+    env_file:
+      - ./services/data-ingestion/.env.example
     environment:
-      - DATABASE_API_URL=http://database-api:8001
-      - NASA_USERNAME=${NASA_USERNAME}
-      - NASA_PASSWORD=${NASA_PASSWORD}
+      DATABASE_URL:                postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+      NASA_DATA_URL:               ${NASA_DATA_URL:-https://omisips1.omisips.eosdis.nasa.gov/data/10da43cd73977b549e32cd346b9f2a2f/OMI-Aura_L2G-OMTO3G_2026m1116_v004-2026m1117t052851.he5}
+      NASA_USERNAME:               ${NASA_USERNAME:-}
+      NASA_PASSWORD:               ${NASA_PASSWORD:-}
+      INGESTION_INTERVAL_SECONDS:  ${INGESTION_INTERVAL_SECONDS:-300}
     ports:
       - "8002:8002"
     depends_on:
-      - database-api
+      postgres:
+        condition: service_healthy
     networks:
-      - ozone-network
+      - ozonecast-net
 
-  # ── Data Analysis (every 5 min — QC, binning, anomalies) ──
-  data-analysis:
+  # ── Backend Services (Analysis + Clustering + Prediction) ───────────────────
+  backend-services:
     build:
-      context: ./services/data-analysis
+      context: ./services/backend-services
       dockerfile: Dockerfile
-    container_name: ozone-data-analysis
+    container_name: ozone-backend-services
     restart: unless-stopped
+    env_file:
+      - ./services/backend-services/.env.example
     environment:
-      - DATABASE_API_URL=http://database-api:8001
-    ports:
-      - "8003:8003"
+      DATABASE_API_URL:              http://database-api:8000
+      ANALYSIS_INTERVAL_SECONDS:     ${ANALYSIS_INTERVAL_SECONDS:-300}
+      PREDICTION_INTERVAL_SECONDS:   ${PREDICTION_INTERVAL_SECONDS:-300}
+      CLUSTERING_INTERVAL_SECONDS:   ${CLUSTERING_INTERVAL_SECONDS:-86400}
+    volumes:
+      - backend_models:/app/models   # persist trained .pkl files
     depends_on:
-      - database-api
+      postgres:
+        condition: service_healthy
     networks:
-      - ozone-network
+      - ozonecast-net
 
-  # ── Clustering (every 1 day — DBSCAN / KMeans) ─────────────
-  clustering:
-    build:
-      context: ./services/clustering
-      dockerfile: Dockerfile
-    container_name: ozone-clustering
-    restart: unless-stopped
-    environment:
-      - DATABASE_API_URL=http://database-api:8001
-    ports:
-      - "8004:8004"
-    depends_on:
-      - database-api
-    networks:
-      - ozone-network
-
-  # ── Prediction (every 5 min — RandomForest retrain) ────────
-  prediction:
-    build:
-      context: ./services/prediction
-      dockerfile: Dockerfile
-    container_name: ozone-prediction
-    restart: unless-stopped
-    environment:
-      - DATABASE_API_URL=http://database-api:8001
-    ports:
-      - "8005:8005"
-    depends_on:
-      - database-api
-    networks:
-      - ozone-network
-
-  # ── Frontend (React + Vite + Tailwind) ─────────────────────
+  # ── Frontend (React + Vite + Tailwind) ──────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -124,25 +109,18 @@ services:
     container_name: ozone-frontend
     restart: unless-stopped
     environment:
-      - VITE_DB_API_URL=http://localhost:8001
-      - VITE_INGEST_API_URL=http://localhost:8002
-      - VITE_ANALYSIS_API_URL=http://localhost:8003
-      - VITE_CLUSTERING_API_URL=http://localhost:8004
-      - VITE_PREDICTION_API_URL=http://localhost:8005
+      VITE_DB_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
       - database-api
-      - data-ingestion
-      - data-analysis
-      - clustering
-      - prediction
     networks:
-      - ozone-network
+      - ozonecast-net
 
 volumes:
-  postgres_data:    # PostgreSQL persistent storage
+  pgdata:          # PostgreSQL persistent storage
+  backend_models:  # ML model .pkl files persist across restarts
 
 networks:
-  ozone-network:
+  ozonecast-net:
     driver: bridge
