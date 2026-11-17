@@ -25,3 +25,6 @@ models/*.pkl
 .DS_Store
 Thumbs.db
 
+# Agent Identity
+.agents/me
+

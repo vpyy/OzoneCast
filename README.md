@@ -1,13 +1,39 @@
-# 🛰️ NASA Ozone Automated Data Pipeline & Analytics (ETL & ML)
+# 🛰️ NASA Ozone Automated Data Pipeline & Analytics (ETL & ML) — OzoneCast
 
 [![Python Version](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Data Source](https://img.shields.io/badge/Data%20Source-NASA%20Earthdata%20%2F%20GES%20DISC-red.svg)](https://urs.earthdata.nasa.gov/)
-[![Architecture](https://img.shields.io/badge/Architecture-Medallion%20(Bronze%2FSilver%2FGold)-emerald.svg)](#2-kiến-trúc-hệ-thống-medallion-pipeline)
-[![Format](https://img.shields.io/badge/Format-HDF--EOS5%20%7C%20NetCDF4%20%7C%20Parquet-orange.svg)](#)
+[![Course](https://img.shields.io/badge/Course-Khai%20Ph%C3%A1%20D%E1%BB%AF%20Li%E1%BB%87u%20(KPDL)-green.svg)](#)
+[![Instructor](https://img.shields.io/badge/Instructor-TS.%20Ph%E1%BA%A1m%20Tu%E1%BA%A5n%20(UTE)-purple.svg)](#)
+[![Architecture](https://img.shields.io/badge/Architecture-Medallion%20%26%20Microservices-emerald.svg)](#2-kiến-trúc-hệ-thống-medallion-pipeline)
 
 Hệ thống tự động hóa thu thập, xử lý và trực quan hóa dữ liệu vệ tinh khí quyển đo nồng độ Ozone (Tổng cột Ozone - Total Column Ozone) từ các cảm biến **Aura/OMI** và **Suomi-NPP/OMPS** của Cơ quan Hàng không và Vũ trụ Hoa Kỳ (**NASA**).
 
-Hệ thống được thiết kế theo chuẩn **Medallion Architecture (Bronze - Silver - Gold)** phục vụ từ việc lưu trữ thô, làm sạch, trực quan hóa trên bản đồ tương tác đến huấn luyện mô hình Machine Learning dự báo.
+Dự án phục vụ học phần **Đồ án Cuối kỳ môn Khai Phá Dữ Liệu (KPDL)** — GVHD: **TS. Phạm Tuấn** (Trường ĐH Sư phạm Kỹ thuật TP.HCM - UTE).
+
+---
+
+## 👥 Nhóm Thực Hiện (5 Thành Viên)
+
+| Handle | Họ và Tên | Vai trò | Mảng Phụ Trách |
+|---|---|---|---|
+| `huusang` | **Hữu Sáng** | **Team Leader / Data Science Lead** | Prediction (Hồi quy nồng độ ngày mai), Classification (Phân loại cảnh báo ngày mai), Clustering (K-Means), Review & Merge Code |
+| `vanphuc` | **Văn Phúc** | **Backend & Database API Lead** | Thiết kế Database Schema, Migrations, FastAPI Service, REST Endpoints cho các Patterns |
+| `vantrung` | **Văn Trung** | **Data Ingestion & Analytics Lead** | Crawler NASA 5 phút/lần, Bronze/Silver ETL, Data Analysis Service (Trend, Seasonality, Correlation) |
+| `vietan` | **Viết An** | **Frontend & UI/UX Lead** | Web Dashboard trực quan thẩm mỹ cao, Interactive Charts (Zoom & Filter), Heatmap |
+| `phucan` | **Phúc An** | **DevOps, Architecture & QA Lead** | Docker Compose đa dịch vụ, Kịch bản Demo phòng thi (Slide 5 & 10), Cloud Deployment |
+
+> Chi tiết phân công và quy chế phối hợp: xem [.agents/team.md](.agents/team.md) và [AGENTS.md](AGENTS.md).
+
+---
+
+## 📚 Tài Liệu Hướng Dẫn & Quy Chuẩn Dự Án
+
+- 🤖 **Quy chuẩn AI Agent:** [AGENTS.md](AGENTS.md) — Hướng dẫn cho mọi Agent (Claude, Gemini, Cursor...) và 9 Bất biến kiến trúc (I1–I9).
+- 🏗️ **Kiến trúc Hệ thống (Slide 2):** [docs/architecture.md](docs/architecture.md) — Sơ đồ khối các microservices độc lập, ports và database.
+- 📊 **Đặc tả 6+ Patterns (Slide 3):** [docs/patterns-spec.md](docs/patterns-spec.md) — Chi tiết Line/Scatter/Histogram, Trend, Seasonality, Correlation, Prediction & Classification.
+- 🎯 **Kịch bản Demo Phòng Thi (Slide 5, 10):** [docs/demo-guide.md](docs/demo-guide.md) — Hướng dẫn 7 bước demo thực tế để đạt điểm tối đa (10 điểm chuẩn + 2 điểm cộng).
+- 🔄 **Quy trình Phát triển:** [docs/workflow.md](docs/workflow.md) & [docs/git-workflow.md](docs/git-workflow.md).
+- 🧠 **Bộ nhớ Quyết định:** [.agents/notes/README.md](.agents/notes/README.md) — Tra cứu qua `python scripts/notes_index.py`.
 
 ---
 
