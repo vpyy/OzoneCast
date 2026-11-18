@@ -26,6 +26,8 @@ export const api = {
     axios.get(`${API_BASE.db}/api/analysis/trend-seasonal`).then(res => res.data),
   getCorrelationMatrix: () => 
     axios.get(`${API_BASE.db}/api/analysis/correlation-matrix`).then(res => res.data),
+  getAnalysisSummary: () => 
+    axios.get(`${API_BASE.db}/api/analysis/summary`).then(res => res.data),
   getTomorrowPrediction: () => 
     axios.get(`${API_BASE.db}/api/prediction/tomorrow`).then(res => res.data),
 

@@ -19,8 +19,11 @@ class DatabaseClient:
 
     def get_engine(self) -> Engine:
         if self._engine is None:
+            url = self.db_url
+            if url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
             self._engine = create_engine(
-                self.db_url,
+                url,
                 pool_pre_ping=True,
                 pool_size=5,
                 max_overflow=10
