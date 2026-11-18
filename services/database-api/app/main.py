@@ -176,10 +176,29 @@ def get_cache_entry(cache_key: str, db: Session = Depends(get_db)):
     except Exception:
         return {"raw": row.payload_json}
 
+def _extract_cached_payload(raw_json: str) -> Any:
+    """Helper unwrap payload an toàn nếu dữ liệu lưu dạng envelope {'cache_key': ..., 'payload': ...}"""
+    try:
+        data = json.loads(raw_json)
+        if isinstance(data, dict) and "payload" in data and ("cache_key" in data or len(data) == 1):
+            return data["payload"]
+        return data
+    except Exception:
+        return {"raw": raw_json}
+
+@app.get("/api/cache/{cache_key}")
+def get_cache_entry(cache_key: str, db: Session = Depends(get_db)):
+    row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == cache_key).first()
+    if not row:
+        return None
+    return _extract_cached_payload(row.payload_json)
+
 @app.post("/api/cache/{cache_key}")
 def set_cache_entry(cache_key: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
     row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == cache_key).first()
-    payload_str = json.dumps(payload, default=str)
+    # Tự động unwrap nếu caller gửi dạng {"cache_key": ..., "payload": ...}
+    actual_data = payload.get("payload", payload) if ("payload" in payload and ("cache_key" in payload or len(payload) == 1)) else payload
+    payload_str = json.dumps(actual_data, default=str)
     if row:
         row.payload_json = payload_str
         row.updated_at = datetime.utcnow()
@@ -196,28 +215,36 @@ def get_timeseries_analysis(period: str = "day", db: Session = Depends(get_db)):
         period = "day"
     cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == f"timeseries_{period}").first()
     if cache_row:
-        return json.loads(cache_row.payload_json)
+        return _extract_cached_payload(cache_row.payload_json)
     return None
 
 @app.get("/api/analysis/trend-seasonal")
 def get_trend_seasonal(db: Session = Depends(get_db)):
     cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "trend_seasonal").first()
     if cache_row:
-        return json.loads(cache_row.payload_json)
+        return _extract_cached_payload(cache_row.payload_json)
     return None
 
 @app.get("/api/analysis/correlation-matrix")
 def get_correlation_matrix(db: Session = Depends(get_db)):
     cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "correlation_matrix").first()
     if cache_row:
-        return json.loads(cache_row.payload_json)
+        return _extract_cached_payload(cache_row.payload_json)
+    return None
+
+@app.get("/api/analysis/summary")
+def get_analysis_summary(db: Session = Depends(get_db)):
+    """Executive Data Mining Report endpoint"""
+    cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "analysis_summary").first()
+    if cache_row:
+        return _extract_cached_payload(cache_row.payload_json)
     return None
 
 @app.get("/api/prediction/tomorrow")
 def get_tomorrow_prediction(db: Session = Depends(get_db)):
     cache_row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == "prediction_tomorrow").first()
     if cache_row:
-        return json.loads(cache_row.payload_json)
+        return _extract_cached_payload(cache_row.payload_json)
     return None
 
 # --- Dashboard Stats API ---
