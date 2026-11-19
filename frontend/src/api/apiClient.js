@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API_BASE = {
-  db: import.meta.env.VITE_DB_API_URL || 'http://localhost:8001',
+  db: import.meta.env.VITE_DB_API_URL || 'http://localhost:8000',
   ingest: import.meta.env.VITE_INGEST_API_URL || 'http://localhost:8002',
   analysis: import.meta.env.VITE_ANALYSIS_API_URL || 'http://localhost:8003',
   clustering: import.meta.env.VITE_CLUSTERING_API_URL || 'http://localhost:8004',
@@ -18,6 +18,8 @@ export const api = {
     axios.get(`${API_BASE.db}/api/grid-summary?limit=${limit}`).then(res => res.data),
   getAnomalies: () => axios.get(`${API_BASE.db}/api/anomalies`).then(res => res.data),
   getClusters: () => axios.get(`${API_BASE.db}/api/clusters`).then(res => res.data),
+  getOrbitTrack: (limit = 6000) => 
+    axios.get(`${API_BASE.db}/api/orbit-track?limit=${limit}`).then(res => res.data),
 
   // Analytics APIs
   getTimeseries: (period = 'day') => 
@@ -37,7 +39,7 @@ export const api = {
 
   // Analysis API triggers
   runAnalysis: (granuleName = null) => 
-    axios.post(`${API_BASE.analysis}/api/analysis/process`, { granule_name: granuleName }).then(res => res.data),
+    axios.post(`${API_BASE.db}/api/analysis/process`, { granule_name: granuleName }).then(res => res.data),
 
   // Clustering API triggers
   runClustering: (algorithm = 'KMeans', eps = 1.2, n_clusters = 4) => 

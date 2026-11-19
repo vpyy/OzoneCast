@@ -31,14 +31,14 @@ class NASAClient:
     def download_file(self, url: str, target_path: str) -> bool:
         """Tải file HDF5/HE5 từ URL trực tiếp hoặc NASA Earthdata."""
         # 1. Thử tải bằng curl (hỗ trợ redirect -L, retry)
-        cmd = ["curl.exe" if os.name == "nt" else "curl", "-L", "--retry", "3", "--retry-delay", "3"]
+        cmd = ["curl.exe" if os.name == "nt" else "curl", "-L", "--retry", "2", "--retry-delay", "2"]
         if self.username and self.password:
             self.ensure_netrc_file()
             cmd.extend(["-n", "-c", self.cookie_file, "-b", self.cookie_file])
         cmd.extend(["-o", target_path, url])
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
             p = Path(target_path)
             if p.exists() and p.stat().st_size > 10000:
                 return True
@@ -50,7 +50,7 @@ class NASAClient:
             session = requests.Session()
             if self.username and self.password:
                 session.auth = HTTPBasicAuth(self.username, self.password)
-            with session.get(url, stream=True, timeout=120, allow_redirects=True) as resp:
+            with session.get(url, stream=True, timeout=15, allow_redirects=True) as resp:
                 if resp.status_code == 200:
                     with open(target_path, "wb") as f:
                         for chunk in resp.iter_content(chunk_size=1024 * 1024):

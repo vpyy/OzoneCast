@@ -12,7 +12,7 @@ Dữ liệu được đọc từ database-api và kết quả ghi lại vào dat
 
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -104,6 +104,7 @@ def main():
 
     warmup()
 
+    now = datetime.utcnow()
     scheduler = BlockingScheduler(timezone="UTC")
 
     scheduler.add_job(
@@ -111,21 +112,21 @@ def main():
         "interval",
         seconds=ANALYSIS_INTERVAL_SECONDS,
         id="analysis_job",
-        next_run_time=None,          # đã warmup, chờ interval tiếp theo
+        next_run_time=now + timedelta(seconds=10),
     )
     scheduler.add_job(
         job_prediction,
         "interval",
         seconds=PREDICTION_INTERVAL_SECONDS,
         id="prediction_job",
-        next_run_time=None,
+        next_run_time=now + timedelta(seconds=15),
     )
     scheduler.add_job(
         job_clustering,
         "interval",
         seconds=CLUSTERING_INTERVAL_SECONDS,
         id="clustering_job",
-        next_run_time=None,
+        next_run_time=now + timedelta(seconds=20),
     )
 
     print(f"[SCHEDULER] Analysis  every {ANALYSIS_INTERVAL_SECONDS}s")

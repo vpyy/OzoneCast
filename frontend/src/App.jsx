@@ -18,7 +18,7 @@ export default function App() {
   const [gridData, setGridData] = useState([]);
   const [clusters, setClusters] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mapMode, setMapMode] = useState('grid'); // 'grid' or 'raw'
+  const [mapMode, setMapMode] = useState('grid');
 
   const loadAllData = async () => {
     setLoading(true);
@@ -48,72 +48,51 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-row font-sans">
-      {/* ── Left Sidebar Navigation ── */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onRefresh={loadAllData}
-        loading={loading}
-      />
+    <div className="min-h-screen bg-gray-50 flex flex-row">
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} onRefresh={loadAllData} loading={loading} />
 
-      {/* ── Main Dashboard Workspace ── */}
       <div className="flex-1 min-w-0 flex flex-col min-h-screen overflow-y-auto">
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-          {/* Top Metric Cards */}
+        <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
           <DashboardStats stats={stats} />
 
-          {/* Tab 1: Bản đồ & Tổng quan */}
           {activeTab === 'overview' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
-                <span className="text-xs font-semibold text-slate-700">Hiển thị Layer Bản đồ Tương tác:</span>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setMapMode('grid')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      mapMode === 'grid' ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    Lưới Silver 0.5° ({gridData.length} ô)
-                  </button>
-                  <button
-                    onClick={() => setMapMode('raw')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      mapMode === 'raw' ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    Điểm Thô Vệ tinh Swath ({rawData.length} điểm)
-                  </button>
-                </div>
+            <div className="space-y-6">
+              <div className="flex gap-2 bg-white p-3 border border-gray-200">
+                <button
+                  onClick={() => setMapMode('grid')}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    mapMode === 'grid' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Grid 0.5° ({gridData.length})
+                </button>
+                <button
+                  onClick={() => setMapMode('raw')}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    mapMode === 'raw' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Swath ({rawData.length})
+                </button>
               </div>
 
               <OzoneMap gridData={gridData} rawData={rawData} mode={mapMode} />
-
-              {/* Quick Tomorrow Prediction Preview */}
               <TomorrowPredictionCard />
             </div>
           )}
 
-          {/* Tab 2: Bộ 3 Biểu đồ Chuỗi thời gian (Line, Scatter, Histogram) */}
-          {activeTab === 'analytics' && (
-            <AnalyticsCharts />
-          )}
+          {activeTab === 'analytics' && <AnalyticsCharts />}
 
-          {/* Tab 3: Xu hướng Trend, Mùa vụ Seasonal & Heatmap Tương quan */}
-          {activeTab === 'trend_corr' && (
-            <TrendSeasonalCorrelation />
-          )}
+          {activeTab === 'trend_corr' && <TrendSeasonalCorrelation />}
 
-          {/* Tab 4: Phân cụm Khu vực (Clustering) */}
           {activeTab === 'clustering' && (
-            <ClusteringPanel
-              clusters={clusters}
-              onClustersUpdated={loadAllData}
-            />
+            <ClusteringPanel clusters={clusters} onClustersUpdated={loadAllData} />
           )}
 
-          {/* Tab 5: Dự báo Ngày mai & Máy học */}
           {activeTab === 'prediction' && (
             <div className="space-y-6">
               <TomorrowPredictionCard />
@@ -121,18 +100,13 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 6: Bảng Dữ liệu Thô (7 Trường) */}
           {activeTab === 'raw' && (
-            <RawDataTable
-              rawData={rawData}
-              granules={granules}
-              onDataMutated={loadAllData}
-            />
+            <RawDataTable rawData={rawData} granules={granules} onDataMutated={loadAllData} />
           )}
         </main>
 
-        <footer className="bg-white border-t border-slate-200 text-slate-500 text-xs py-4 text-center">
-          NASA Ozone Satellite Monitoring System &bull; Microservices & Docker Architecture &bull; 2026
+        <footer className="bg-white border-t border-gray-200 text-gray-500 text-xs py-4 text-center">
+          OzoneCast - NASA Satellite Monitoring System
         </footer>
       </div>
     </div>
