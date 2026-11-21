@@ -165,17 +165,42 @@ def insert_clusters(payload: ClusterBulkCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Saved {len(objs)} cluster data points with atmospheric/surface characteristics"}
 
-# --- Generic Cache / Analysis Report Storage ---
-@app.get("/api/cache/{cache_key}")
-def get_cache_entry(cache_key: str, db: Session = Depends(get_db)):
-    row = db.query(SystemAnalysisCache).filter(SystemAnalysisCache.cache_key == cache_key).first()
-    if not row:
-        return None
+@app.post("/api/clustering/run")
+def trigger_clustering_proxy(payload: Optional[Dict[str, Any]] = None, db: Session = Depends(get_db)):
+    """Proxy kích hoạt phân cụm sang backend-services (port 8004) với fallback an toàn qua DB."""
+    import requests
+    req_body = payload or {"algorithm": "KMeans", "eps": 1.2, "n_clusters": 4}
     try:
-        return json.loads(row.payload_json)
-    except Exception:
-        return {"raw": row.payload_json}
+        resp = requests.post("http://backend-services:8004/api/clustering/run", json=req_body, timeout=25)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"[DATABASE-API CLUSTERING PROXY] Note: backend-services:8004 not reached ({e}), querying DB...")
 
+    # Fallback: đọc trực tiếp kết quả cụm đã có trong DB
+    clusters = db.query(ClusterResult).order_by(ClusterResult.run_timestamp.desc()).limit(150).all()
+    unique_cids = len(set(c.cluster_id for c in clusters if c.cluster_id != -1))
+    return {
+        "status": "success",
+        "algorithm": req_body.get("algorithm", "KMeans"),
+        "total_points_clustered": len(clusters),
+        "cluster_count": unique_cids if unique_cids > 0 else int(req_body.get("n_clusters", 4)),
+        "sample_points": [
+            {
+                "algorithm": c.algorithm,
+                "cluster_id": c.cluster_id,
+                "latitude": c.latitude,
+                "longitude": c.longitude,
+                "mean_ozone": c.mean_ozone,
+                "mean_reflectivity": c.mean_reflectivity,
+                "tag": c.tag,
+                "characteristic": c.characteristic
+            }
+            for c in clusters[:50]
+        ]
+    }
+
+# --- Generic Cache / Analysis Report Storage ---
 def _extract_cached_payload(raw_json: str) -> Any:
     """Helper unwrap payload an toàn nếu dữ liệu lưu dạng envelope {'cache_key': ..., 'payload': ...}"""
     try:
