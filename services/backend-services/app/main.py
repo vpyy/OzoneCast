@@ -137,8 +137,6 @@ def health_check():
     }
 
 
-    now = datetime.utcnow()
-    scheduler = BlockingScheduler(timezone="UTC")
 @app.post("/api/clustering/run")
 def trigger_clustering(req: ClusteringRunRequest):
     """
@@ -189,27 +187,27 @@ scheduler = BackgroundScheduler(timezone="UTC")
 
 
 def setup_scheduler():
+    now = datetime.utcnow()
     scheduler.add_job(
         job_analysis,
         "interval",
         seconds=ANALYSIS_INTERVAL_SECONDS,
         id="analysis_job",
-        next_run_time=now + timedelta(seconds=10),
-        next_run_time=None,
+        next_run_time=now + timedelta(seconds=ANALYSIS_INTERVAL_SECONDS),
     )
     scheduler.add_job(
         job_prediction,
         "interval",
         seconds=PREDICTION_INTERVAL_SECONDS,
         id="prediction_job",
-        next_run_time=now + timedelta(seconds=15),
+        next_run_time=now + timedelta(seconds=PREDICTION_INTERVAL_SECONDS),
     )
     scheduler.add_job(
         job_clustering,
         "interval",
         seconds=CLUSTERING_INTERVAL_SECONDS,
         id="clustering_job",
-        next_run_time=now + timedelta(seconds=20),
+        next_run_time=now + timedelta(seconds=CLUSTERING_INTERVAL_SECONDS),
     )
     scheduler.start()
     print(f"[SCHEDULER] Started successfully in background.")
