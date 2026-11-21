@@ -14,5 +14,6 @@ RUN mkdir -p /app/models
 
 COPY app/ ./app/
 
-# Không expose port — service này không có HTTP API
+EXPOSE 8004
+
 CMD ["python", "-m", "app.main"]
