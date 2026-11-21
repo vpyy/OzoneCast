@@ -1,221 +1,198 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Grid, Info, RefreshCw } from 'lucide-react';
+import { TrendingUp, Grid, RefreshCw } from 'lucide-react';
 import { api } from '../api/apiClient';
+
+const S = {
+  panel:  { background: '#111827', border: '1px solid #1F2937', borderRadius: 4, padding: 16 },
+  label:  { fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280' },
+  mono:   { fontFamily: 'JetBrains Mono, monospace' },
+};
+
+function getCorrStyle(val) {
+  if (val === 1.0) return { background: '#1F2937', color: '#9CA3AF' };
+  if (val > 0.6)  return { background: '#EF444488', color: '#FEF2F2' };
+  if (val > 0.3)  return { background: '#EF444444', color: '#FCA5A5' };
+  if (val > 0.05) return { background: '#EF444418', color: '#FCA5A5' };
+  if (val > -0.05) return { background: 'transparent', color: '#4B5563' };
+  if (val > -0.3) return { background: '#3B82F618', color: '#93C5FD' };
+  if (val > -0.6) return { background: '#3B82F644', color: '#93C5FD' };
+  return { background: '#3B82F688', color: '#EFF6FF' };
+}
 
 export default function TrendSeasonalCorrelation() {
   const [trendData, setTrendData] = useState(null);
-  const [corrData, setCorrData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [corrData, setCorrData]   = useState(null);
+  const [loading, setLoading]     = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [trendRes, corrRes] = await Promise.allSettled([
-        api.getTrendSeasonal(),
-        api.getCorrelationMatrix()
-      ]);
-      if (trendRes.status === 'fulfilled') setTrendData(trendRes.value);
-      if (corrRes.status === 'fulfilled') setCorrData(corrRes.value);
-    } catch (err) {
-      console.error("Error fetching trend/corr data:", err);
-    } finally {
-      setLoading(false);
-    }
+      const [t, c] = await Promise.allSettled([api.getTrendSeasonal(), api.getCorrelationMatrix()]);
+      if (t.status === 'fulfilled') setTrendData(t.value);
+      if (c.status === 'fulfilled') setCorrData(c.value);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const series = trendData?.series || [];
-  const matrix = corrData?.matrix || [];
+  const series    = trendData?.series || [];
+  const matrix    = corrData?.matrix || [];
   const variables = corrData?.variables || [];
 
-  // Color helper for Correlation Matrix (-1 to +1)
-  const getCorrColor = (val) => {
-    if (val === 1.0) return 'bg-slate-200 text-slate-800 font-bold';
-    if (val > 0.6) return 'bg-rose-600 text-white font-bold';
-    if (val > 0.3) return 'bg-rose-400 text-white font-semibold';
-    if (val > 0.05) return 'bg-rose-100 text-rose-900';
-    if (val > -0.05) return 'bg-slate-50 text-slate-600';
-    if (val > -0.3) return 'bg-sky-100 text-sky-900';
-    if (val > -0.6) return 'bg-sky-400 text-white font-semibold';
-    return 'bg-sky-700 text-white font-bold';
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
+
       {/* Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-indigo-600" />
-            Phân tích Xu hướng (Trend), Mùa vụ (Seasonal) & Ma trận Tương quan
-          </h2>
-          <p className="text-xs text-slate-500">
-            Tách chuỗi thời gian thành thành phần xu hướng và chu kỳ dao động định kỳ &bull; Khảo sát tương quan bức xạ 6 biến
-          </p>
+      <div style={{ ...S.panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TrendingUp size={14} strokeWidth={1.75} style={{ color: '#6366F1' }} />
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#F3F4F6', margin: 0 }}>Trend Decomposition &amp; Correlation Analysis</p>
+            <p style={{ ...S.mono, fontSize: 10, color: '#4B5563', marginTop: 2 }}>Additive model · Pearson r matrix 6×6</p>
+          </div>
         </div>
-        <button
-          onClick={fetchData}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-all"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Làm mới
+        <button onClick={fetchData}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 4, border: '1px solid #374151', background: '#1F2937', color: '#9CA3AF', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+          <RefreshCw size={11} strokeWidth={1.75} className={loading ? 'animate-spin' : ''} />
+          Refresh
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
 
-        {/* 1. Trend & Seasonal Decomposition */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-                Trích xuất Đường Trend & Chu kỳ Mùa vụ (Seasonal)
-              </h3>
-              <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200">
-                Additive Model
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mb-3">
-              Mô hình hóa: Quan trắc (Observed) = Xu hướng dài hạn (Trend) + Dao động mùa (Seasonal) + Phần dư
-            </p>
+        {/* Trend chart */}
+        <div style={S.panel}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <p style={S.label}>Trend &amp; Seasonal Decomposition</p>
+            <span style={{ ...S.mono, fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid #374151', color: '#6B7280' }}>Additive</span>
           </div>
+          <p style={{ ...S.mono, fontSize: 10, color: '#4B5563', marginBottom: 10 }}>
+            Observed = Trend + Seasonal + Residual
+          </p>
 
-          <div className="h-64 w-full relative pt-2">
+          <div style={{ height: 220 }}>
             {series.length > 0 ? (
-              <svg className="w-full h-full" viewBox="0 0 500 200" preserveAspectRatio="none">
-                {/* Horizontal reference lines */}
-                <line x1="30" y1="50" x2="480" y2="50" stroke="#f1f5f9" strokeDasharray="2 2" />
-                <line x1="30" y1="100" x2="480" y2="100" stroke="#f1f5f9" strokeDasharray="2 2" />
-                <line x1="30" y1="150" x2="480" y2="150" stroke="#f1f5f9" strokeDasharray="2 2" />
+              <svg width="100%" height="100%" viewBox="0 0 500 200" preserveAspectRatio="none">
+                {/* Gridlines */}
+                {[50, 100, 150].map(y => (
+                  <line key={y} x1="30" y1={y} x2="490" y2={y} stroke="#1F2937" strokeWidth="1" />
+                ))}
+                {/* Y labels */}
+                {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
+                  const du = Math.round(350 - r * 150);
+                  return <text key={i} x="25" y={30 + r * 150} fontSize="9" fill="#4B5563" textAnchor="end" fontFamily="JetBrains Mono, monospace">{du}</text>;
+                })}
 
-                {/* 1. Observed (raw fluctuation - grey) */}
-                <polyline
-                  fill="none"
-                  stroke="#cbd5e1"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 440},${100 - (s.observed - 295) * 1.5}`).join(' ')}
-                />
+                {/* Observed */}
+                <polyline fill="none" stroke="#374151" strokeWidth="1.5" strokeDasharray="3 3"
+                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 445},${100 - (s.observed - 295) * 1.5}`).join(' ')} />
 
-                {/* 2. Trend Line (smooth purple) */}
-                <polyline
-                  fill="none"
-                  stroke="#6366f1"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 440},${100 - (s.trend - 295) * 1.5}`).join(' ')}
-                />
+                {/* Trend */}
+                <polyline fill="none" stroke="#6366F1" strokeWidth="2.5" strokeLinecap="round"
+                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 445},${100 - (s.trend - 295) * 1.5}`).join(' ')} />
 
-                {/* 3. Seasonal Sine Wave (amber) */}
-                <polyline
-                  fill="none"
-                  stroke="#f59e0b"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 440},${160 - s.seasonal * 1.2}`).join(' ')}
-                />
+                {/* Seasonal */}
+                <polyline fill="none" stroke="#F59E0B" strokeWidth="1.75" strokeLinecap="round"
+                  points={series.map((s, i) => `${35 + (i / (series.length - 1)) * 445},${160 - s.seasonal * 1.2}`).join(' ')} />
 
                 {/* X labels */}
                 {series.filter((_, i) => i % 4 === 0).map((s, i) => (
-                  <text key={i} x={35 + (i * 4 / (series.length - 1)) * 440} y="195" fontSize="10" fill="#94a3b8" textAnchor="middle">
+                  <text key={i} x={35 + (i * 4 / (series.length - 1)) * 445} y="195" fontSize="9" fill="#4B5563" textAnchor="middle" fontFamily="JetBrains Mono, monospace">
                     {s.label}
                   </text>
                 ))}
+                {/* Y-axis label */}
+                <text x="8" y="100" fontSize="9" fill="#4B5563" textAnchor="middle" transform="rotate(-90,8,100)" fontFamily="JetBrains Mono, monospace">DU</text>
               </svg>
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                Đang nạp chuỗi decomposition...
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#374151', fontSize: 11 }}>
+                Loading decomposition series...
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-xs">
-            <div className="flex items-center gap-1.5 text-slate-600">
-              <span className="w-3 h-0.5 bg-indigo-600 inline-block rounded"></span>
-              <span>Đường Trend (Xu hướng)</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-600">
-              <span className="w-3 h-0.5 bg-amber-500 inline-block rounded"></span>
-              <span>Dao động Mùa vụ</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <span className="w-3 h-0.5 bg-slate-300 inline-block border-dashed"></span>
-              <span>Dữ liệu thực tế</span>
-            </div>
+          <div style={{ borderTop: '1px solid #1F2937', paddingTop: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {[
+              { color: '#6366F1', label: 'Trend (long-term)' },
+              { color: '#F59E0B', label: 'Seasonal' },
+              { color: '#374151', dashed: true, label: 'Observed' },
+            ].map(({ color, dashed, label }) => (
+              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#6B7280' }}>
+                <span style={{ width: 20, height: 2, background: color, display: 'inline-block', borderRadius: 1, borderTop: dashed ? `2px dashed ${color}` : undefined, opacity: dashed ? 0.6 : 1 }} />
+                {label}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* 2. Correlation Matrix Heatmap */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <Grid className="w-4 h-4 text-rose-500" />
-                Heatmap Ma trận Tương quan (Correlation Matrix 6x6)
-              </h3>
-              <span className="text-xs font-mono bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-200">
-                Pearson r (-1 đến +1)
-              </span>
+        {/* Correlation matrix */}
+        <div style={S.panel}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Grid size={13} strokeWidth={1.75} style={{ color: '#EF4444' }} />
+              <p style={S.label}>Correlation Matrix 6×6</p>
             </div>
-            <p className="text-xs text-slate-400 mb-3">
-              Mức độ tương quan giữa Ozone, Độ phản xạ 331nm, UV Aerosol, Góc mặt trời và Tọa độ
-            </p>
+            <span style={{ ...S.mono, fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid #374151', color: '#6B7280' }}>Pearson r</span>
           </div>
+          <p style={{ ...S.mono, fontSize: 10, color: '#4B5563', marginBottom: 10 }}>
+            Ozone · Reflectivity · UV Aerosol · SZA · Latitude · Longitude
+          </p>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-center border-collapse">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'JetBrains Mono, monospace' }}>
               <thead>
                 <tr>
-                  <th className="p-1.5 text-left text-slate-400 font-semibold text-[11px]">Biến số</th>
+                  <th style={{ padding: '5px 6px', fontSize: 9, color: '#4B5563', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Variable</th>
                   {variables.map((v, i) => (
-                    <th key={i} className="p-1.5 text-slate-600 font-semibold text-[10px] truncate max-w-[65px]" title={v}>
-                      {v.split(' ')[0]}
+                    <th key={i} style={{ padding: '5px 4px', fontSize: 9, color: '#4B5563', fontWeight: 600, textAlign: 'center', maxWidth: 50, overflow: 'hidden' }} title={v}>
+                      {v.split(' ')[0].substring(0, 6)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {matrix.map((row, i) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    <td className="p-1.5 text-left font-medium text-slate-700 text-[11px] whitespace-nowrap">
-                      {row.variable}
+                  <tr key={i}>
+                    <td style={{ padding: '3px 6px', fontSize: 9, color: '#6B7280', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                      {row.variable.substring(0, 12)}
                     </td>
-                    {row.values.map((val, j) => (
-                      <td key={j} className="p-1">
-                        <div
-                          className={`w-full py-1.5 rounded text-[10.5px] transition-all cursor-default ${getCorrColor(val)}`}
-                          title={`${row.variable} vs ${variables[j]}: r = ${val}`}
-                        >
-                          {val > 0 && val !== 1 ? `+${val}` : val}
-                        </div>
-                      </td>
-                    ))}
+                    {row.values.map((val, j) => {
+                      const st = getCorrStyle(val);
+                      return (
+                        <td key={j} style={{ padding: '2px 2px', textAlign: 'center' }}>
+                          <div style={{ ...st, fontSize: 9, padding: '3px 2px', borderRadius: 3, fontWeight: val === 1.0 ? 400 : 600 }}
+                            title={`${row.variable} × ${variables[j]}: r = ${val}`}>
+                            {val === 1 ? '1.00' : val > 0 ? `+${val}` : val}
+                          </div>
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* Heatmap Legend */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-sky-600 inline-block"></span> Tương quan nghịch (-1.0)
+          {matrix.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#374151', fontSize: 11, padding: 20 }}>
+              No correlation data yet.
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid #1F2937', paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#4B5563', fontFamily: 'JetBrains Mono, monospace' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: '#3B82F688', display: 'inline-block' }} /> Negative (−1.0)
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-slate-100 border border-slate-300 inline-block"></span> Độc lập (0.0)
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: '#1F2937', border: '1px solid #374151', display: 'inline-block' }} /> Neutral (0)
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-rose-600 inline-block"></span> Tương quan thuận (+1.0)
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: '#EF444488', display: 'inline-block' }} /> Positive (+1.0)
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );
 }
-

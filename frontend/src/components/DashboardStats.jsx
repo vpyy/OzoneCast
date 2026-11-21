@@ -1,62 +1,41 @@
 import React from 'react';
-import { Database, Activity, ShieldAlert, Cpu, BarChart2 } from 'lucide-react';
+import { Database, Activity, BarChart2, ShieldAlert } from 'lucide-react';
+import { C, F } from '../theme';
 
 export default function DashboardStats({ stats }) {
+  const anomaly = stats?.anomalies_detected > 0;
+
   const cards = [
-    {
-      title: 'Tracked Granules',
-      value: stats?.total_granules || 0,
-      sub: 'NASA L2 HDF5 Swaths',
-      icon: Database,
-      color: 'text-sky-500',
-      bg: 'bg-sky-50'
-    },
-    {
-      title: 'Raw Measurement Points',
-      value: (stats?.total_raw_measurements || 0).toLocaleString(),
-      sub: 'Point-level soundings',
-      icon: Activity,
-      color: 'text-indigo-500',
-      bg: 'bg-indigo-50'
-    },
-    {
-      title: 'Average Ozone (DU)',
-      value: `${stats?.avg_ozone_du || 290} DU`,
-      sub: `Min: ${stats?.min_ozone_du || 180} | Max: ${stats?.max_ozone_du || 450}`,
-      icon: BarChart2,
-      color: 'text-emerald-500',
-      bg: 'bg-emerald-50'
-    },
-    {
-      title: 'Depletion Anomalies',
-      value: stats?.anomalies_detected || 0,
-      sub: 'Critical low-ozone zones (<220 DU)',
-      icon: ShieldAlert,
-      color: (stats?.anomalies_detected > 0) ? 'text-rose-500' : 'text-amber-500',
-      bg: (stats?.anomalies_detected > 0) ? 'bg-rose-50' : 'bg-amber-50'
-    }
+    { label: 'Tracked Granules',    value: stats?.total_granules ?? 0,                           unit: '',   sub: 'NASA L2 HDF-EOS5',                                             icon: Database,    accent: C.accent   },
+    { label: 'Raw Measurements',    value: (stats?.total_raw_measurements ?? 0).toLocaleString(), unit: '',   sub: 'Point-level soundings',                                        icon: Activity,    accent: C.purple   },
+    { label: 'Avg Ozone Column',    value: stats?.avg_ozone_du ?? 290,                            unit: 'DU', sub: `Min ${stats?.min_ozone_du ?? 180} · Max ${stats?.max_ozone_du ?? 450} DU`, icon: BarChart2,   accent: C.success  },
+    { label: 'Depletion Anomalies', value: stats?.anomalies_detected ?? 0,                        unit: '',   sub: 'Zones < 220 DU',                                               icon: ShieldAlert, accent: anomaly ? C.danger : C.warning },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      {cards.map((c, idx) => {
-        const Icon = c.icon;
-        return (
-          <div key={idx} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow transition">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{c.title}</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{c.value}</p>
-                <p className="text-xs text-slate-400 mt-1">{c.sub}</p>
-              </div>
-              <div className={`p-3 rounded-xl ${c.bg}`}>
-                <Icon className={`h-6 w-6 ${c.color}`} />
-              </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      {cards.map(({ label, value, unit, sub, icon: Icon, accent }, i) => (
+        <div key={i} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 4, padding: '14px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: F.sans, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: C.textMuted, margin: 0 }}>
+                {label}
+              </p>
+              <p style={{ fontFamily: F.mono, fontSize: 24, fontWeight: 700, color: C.textPrimary, margin: '4px 0 0', lineHeight: 1.2 }}>
+                {value}
+                {unit && <span style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 500, color: C.textMuted, marginLeft: 4 }}>{unit}</span>}
+              </p>
+              <p style={{ fontFamily: F.mono, fontSize: 10, color: C.textMuted, marginTop: 4 }}>{sub}</p>
+            </div>
+            <div style={{ width: 32, height: 32, borderRadius: 4, background: C.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: 8 }}>
+              <Icon size={15} strokeWidth={1.75} style={{ color: accent }} />
             </div>
           </div>
-        );
-      })}
+          <div style={{ marginTop: 10, height: 2, borderRadius: 1, background: C.border, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: '55%', background: accent, borderRadius: 1 }} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
-

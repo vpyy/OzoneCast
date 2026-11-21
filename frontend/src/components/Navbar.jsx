@@ -1,118 +1,119 @@
 import React from 'react';
-import { Activity, Database, Layers, BrainCircuit, Globe, RefreshCw, LineChart, TrendingUp, CheckCircle, Server } from 'lucide-react';
+import { Globe, LineChart, TrendingUp, Layers, BrainCircuit, Database, RefreshCw, Radio } from 'lucide-react';
+import { C, F } from '../theme';
+
+const NAV = [
+  { id: 'overview',   label: 'Bản đồ & Tổng quan',   desc: 'Grid 0.5° · Raw Swath',        icon: Globe        },
+  { id: 'analytics',  label: 'Chuỗi thời gian',       desc: 'Line · Scatter · Histogram',   icon: LineChart    },
+  { id: 'trend_corr', label: 'Xu hướng & Tương quan', desc: 'Trend · Seasonal · Pearson r', icon: TrendingUp   },
+  { id: 'clustering', label: 'Phân cụm Khu vực',      desc: 'K-Means · DBSCAN',             icon: Layers       },
+  { id: 'prediction', label: 'Dự báo & Học máy',      desc: 'Regressor · Classifier',       icon: BrainCircuit },
+  { id: 'raw',        label: 'Dữ liệu Thô',           desc: 'HDF-EOS5 · 10 trường',        icon: Database     },
+];
 
 export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, wsStatus = 'disconnected' }) {
-  const navItems = [
-    { id: 'overview', label: 'Bản đồ & Tổng quan', desc: 'Lưới Silver & Điểm thô Swath', icon: Globe },
-    { id: 'analytics', label: 'Biểu đồ Chuỗi thời gian', desc: 'Line, Scatter & Histogram', icon: LineChart },
-    { id: 'trend_corr', label: 'Xu hướng & Tương quan', desc: 'Trend, Seasonal & Heatmap 6x6', icon: TrendingUp },
-    { id: 'clustering', label: 'Phân cụm Khu vực', desc: 'K-Means 4 biến không gian', icon: Layers },
-    { id: 'prediction', label: 'Dự báo Ngày mai & ML', desc: 'Hồi quy DU & Nhãn cảnh báo', icon: BrainCircuit },
-    { id: 'raw', label: 'Dữ liệu Thô (7 Trường)', desc: 'Bóc tách từ file HDF-EOS5', icon: Database },
-  ];
+  const wsColor = wsStatus === 'connected' ? C.success : wsStatus === 'reconnecting' ? C.warning : C.textDisabled;
+  const wsLabel = wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'REST Fallback';
+
+  const pill = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '5px 9px', marginTop: 6, borderRadius: 4,
+    border: `1px solid ${C.border}`, background: C.surfaceAlt,
+    fontSize: 10, fontFamily: F.mono, color: C.textMuted,
+  };
 
   return (
-    <aside className="w-64 lg:w-72 bg-slate-900 text-white border-r border-slate-800 flex flex-col justify-between h-screen sticky top-0 shrink-0 select-none z-40">
-      {/* ── 1. Brand & Header ── */}
-      <div className="p-5 border-b border-slate-800/80">
-        <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-tr from-sky-600 to-indigo-500 p-2.5 rounded-xl text-white shadow-lg shadow-sky-600/30">
-            <Activity className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-base font-black tracking-tight bg-gradient-to-r from-sky-400 via-indigo-200 to-white bg-clip-text text-transparent">
-              NASA Ozone System
-            </h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">
-              Microservices Platform
-            </p>
-          </div>
+    <aside style={{
+      width: 236, minWidth: 236, flexShrink: 0,
+      background: C.surface, borderRight: `1px solid ${C.border}`,
+      display: 'flex', flexDirection: 'column', height: '100vh',
+      position: 'sticky', top: 0, zIndex: 40,
+    }}>
+
+      {/* Brand */}
+      <div style={{ padding: '16px 14px 12px', borderBottom: `1px solid ${C.border}` }}>
+        <p style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: C.textPrimary, margin: 0, letterSpacing: '-0.02em' }}>
+          NASA Ozone System
+        </p>
+        <p style={{ fontFamily: F.mono, fontSize: 10, color: C.textMuted, letterSpacing: '0.08em', marginTop: 2 }}>
+          MICROSERVICES PLATFORM
+        </p>
+
+        {/* PostgreSQL */}
+        <div style={pill}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.success }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.success, flexShrink: 0 }} />
+            PostgreSQL :5432
+          </span>
+          <span style={{ color: C.success }}>OK</span>
         </div>
 
-        {/* Live Status Pill */}
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center justify-between bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 text-[11px]">
-            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Hệ thống hoạt động
-            </span>
-            <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
-              PostgreSQL :8000
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between bg-slate-950/40 px-3 py-1.5 rounded-lg border border-slate-800/80 text-[11px]">
-            <span className="flex items-center gap-1.5 font-medium">
-              <span className={`w-2 h-2 rounded-full ${
-                wsStatus === 'connected' ? 'bg-sky-400 animate-ping' :
-                wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-slate-500'
-              }`}></span>
-              <span className={
-                wsStatus === 'connected' ? 'text-sky-300' :
-                wsStatus === 'reconnecting' ? 'text-amber-300' : 'text-slate-400'
-              }>
-                {wsStatus === 'connected' ? 'WS: Trực tiếp' :
-                 wsStatus === 'reconnecting' ? 'WS: Đang nối lại' : 'WS: Fallback REST'}
-              </span>
-            </span>
-            <span className="text-[10px] font-mono text-slate-400">
-              /ws/stream
-            </span>
-          </div>
+        {/* WebSocket */}
+        <div style={{ ...pill, marginTop: 4 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: wsColor }}>
+            <Radio size={10} strokeWidth={1.75} />
+            WS · {wsLabel}
+          </span>
+          <span>/ws/stream</span>
         </div>
       </div>
 
-      {/* ── 2. Navigation Menu Links ── */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pb-2 font-mono">
-          Điều hướng Chức năng
+      {/* Nav items */}
+      <nav style={{ flex: 1, padding: '8px 8px', overflowY: 'auto' }}>
+        <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textDisabled, padding: '4px 8px 8px' }}>
+          Navigation
         </div>
 
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
+        {NAV.map(({ id, label, desc, icon: Icon }) => {
+          const active = activeTab === id;
           return (
             <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left transition-all ${
-                isActive
-                  ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25 font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
+              key={id}
+              onClick={() => setActiveTab(id)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                padding: '8px 10px', borderRadius: 4, marginBottom: 2,
+                border: 'none', cursor: 'pointer', textAlign: 'left',
+                transition: 'background 0.12s',
+                background: active ? C.accent : 'transparent',
+                color: active ? '#fff' : C.textSecond,
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.surfaceAlt; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
-              <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? 'bg-sky-500/40 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs truncate">{item.label}</div>
-                <div className={`text-[10px] truncate ${isActive ? 'text-sky-100' : 'text-slate-400'}`}>
-                  {item.desc}
+              <Icon size={15} strokeWidth={1.75} style={{ flexShrink: 0, color: active ? '#fff' : C.textMuted }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: active ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {label}
+                </div>
+                <div style={{ fontFamily: F.mono, fontSize: 10, color: active ? 'rgba(255,255,255,0.65)' : C.textMuted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {desc}
                 </div>
               </div>
-              {isActive && (
-                <div className="w-1.5 h-1.5 rounded-full bg-white shrink-0"></div>
-              )}
             </button>
           );
         })}
       </nav>
 
-      {/* ── 3. Bottom Actions & Footer ── */}
-      <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 space-y-3">
+      {/* Footer */}
+      <div style={{ padding: '12px 10px', borderTop: `1px solid ${C.border}`, background: C.surfaceAlt }}>
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shadow-sm disabled:opacity-50"
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '7px 0', borderRadius: 4, border: `1px solid ${C.border}`,
+            background: C.surface, color: loading ? C.textDisabled : C.textSecond,
+            fontSize: 11, fontWeight: 600, fontFamily: F.sans,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-sky-400' : ''}`} />
-          <span>{loading ? 'Đang cập nhật...' : 'Làm mới Dữ liệu'}</span>
+          <RefreshCw size={12} strokeWidth={1.75} className={loading ? 'animate-spin' : ''} />
+          {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>
-
-        <div className="text-[10px] text-slate-400 text-center leading-tight">
-          NASA Aura/OMI & Suomi-NPP &bull; v2.0<br/>
-          Docker Compose Architecture
-        </div>
+        <p style={{ fontFamily: F.mono, fontSize: 10, color: C.textDisabled, textAlign: 'center', marginTop: 8 }}>
+          Aura/OMI · v2.0 · Docker Compose
+        </p>
       </div>
     </aside>
   );

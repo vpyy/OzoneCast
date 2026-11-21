@@ -1,230 +1,172 @@
 import React, { useState } from 'react';
-import { Layers, Play, CheckCircle2, Sparkles, MapPin, Eye } from 'lucide-react';
+import { Layers, Play, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/apiClient';
+import { C, F, panelStyle, labelStyle, monoStyle, inputStyle, inputLabelStyle, thStyle, tdStyle } from '../theme';
+
+function clusterAccent(char = '') {
+  if (char.includes('băng') || char.includes('mây'))           return '#06B6D4';
+  if (char.includes('suy giảm') || char.includes('thủng'))    return C.danger;
+  if (char.includes('nhiệt đới') || char.includes('xích'))    return C.warning;
+  return C.success;
+}
 
 export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
   const [algorithm, setAlgorithm] = useState('KMeans');
   const [nClusters, setNClusters] = useState(4);
-  const [eps, setEps] = useState(1.2);
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState(null);
+  const [eps, setEps]             = useState(1.2);
+  const [running, setRunning]     = useState(false);
+  const [result, setResult]       = useState(null);
 
   const handleRun = async () => {
     setRunning(true);
     try {
-      const res = await api.runClustering(algorithm, parseFloat(eps), parseInt(nClusters));
-      setResult(res);
+      setResult(await api.runClustering(algorithm, parseFloat(eps), parseInt(nClusters)));
       if (onClustersUpdated) onClustersUpdated();
     } catch (err) {
       alert('Clustering error: ' + (err.response?.data?.detail || err.message));
-    } finally {
-      setRunning(false);
-    }
+    } finally { setRunning(false); }
   };
 
-  // Group clusters for summary display
-  const clusterGroups = {};
+  const groups = {};
   clusters.forEach(c => {
-    const key = c.cluster_id;
-    if (!clusterGroups[key]) {
-      clusterGroups[key] = {
-        id: key,
-        tag: c.tag || `Cụm ${key + 1}`,
-        characteristic: c.characteristic || 'Vùng bề mặt khí quyển thông thường',
-        count: 0,
-        totalOzone: 0,
-        totalRefl: 0
-      };
-    }
-    clusterGroups[key].count += 1;
-    clusterGroups[key].totalOzone += (c.mean_ozone || 0);
-    clusterGroups[key].totalRefl += (c.mean_reflectivity || 20);
+    if (!groups[c.cluster_id]) groups[c.cluster_id] = { id: c.cluster_id, tag: c.tag, characteristic: c.characteristic, count: 0, sumO3: 0, sumRefl: 0 };
+    groups[c.cluster_id].count++;
+    groups[c.cluster_id].sumO3   += c.mean_ozone || 0;
+    groups[c.cluster_id].sumRefl += c.mean_reflectivity || 20;
   });
 
-  const getClusterBadge = (charStr = '') => {
-    if (charStr.includes('băng tuyết') || charStr.includes('mây')) {
-      return 'bg-cyan-50 text-cyan-800 border-cyan-300';
-    }
-    if (charStr.includes('suy giảm') || charStr.includes('thủng')) {
-      return 'bg-rose-50 text-rose-800 border-rose-300';
-    }
-    if (charStr.includes('nhiệt đới') || charStr.includes('xích đạo')) {
-      return 'bg-amber-50 text-amber-800 border-amber-300';
-    }
-    return 'bg-emerald-50 text-emerald-800 border-emerald-300';
-  };
-
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      {/* Control Card */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <Layers className="h-5 w-5 text-indigo-600" />
-              <span>Phân cụm Khu vực Khí quyển & Bề mặt (Spatial Clustering Service)</span>
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Tần suất chạy tự động: <strong>1 ngày / lần</strong> &bull; Thuật toán phân cụm dựa trên 4 biến số: <strong>Latitude, Longitude, Ozone</strong> và <strong>Reflectivity331</strong>.
-            </p>
+      {/* Control */}
+      <div style={panelStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Layers size={14} strokeWidth={1.75} style={{ color: C.purple }} />
+            <div>
+              <p style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: 0 }}>Spatial Clustering</p>
+              <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                Variables: Lat · Lon · Ozone DU · Reflectivity 331
+              </p>
+            </div>
           </div>
-          <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-200 font-semibold">
-            Chu kỳ: 1 ngày / lần
+          <span style={{ ...monoStyle, fontSize: 10, padding: '3px 8px', borderRadius: 4, border: `1px solid ${C.border}`, color: C.textMuted, background: C.surfaceAlt }}>
+            Auto: 1×/day
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end mt-4">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, alignItems: 'flex-end' }}>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Thuật toán phân cụm</label>
-            <select
-              value={algorithm}
-              onChange={(e) => setAlgorithm(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="KMeans">K-Means (Phân cụm tâm đại diện)</option>
-              <option value="DBSCAN">DBSCAN (Phân cụm mật độ không gian)</option>
+            <label style={inputLabelStyle}>Algorithm</label>
+            <select value={algorithm} onChange={e => setAlgorithm(e.target.value)}
+              style={{ ...inputStyle, appearance: 'none' }}>
+              <option value="KMeans">K-Means</option>
+              <option value="DBSCAN">DBSCAN</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {algorithm === 'KMeans' ? 'Số lượng cụm (K)' : 'Bán kính Epsilon (Eps)'}
-            </label>
-            <input
-              type="number"
+            <label style={inputLabelStyle}>{algorithm === 'KMeans' ? 'K (Clusters)' : 'Epsilon'}</label>
+            <input style={inputStyle} type="number"
               step={algorithm === 'KMeans' ? '1' : '0.1'}
               value={algorithm === 'KMeans' ? nClusters : eps}
-              onChange={(e) => algorithm === 'KMeans' ? setNClusters(e.target.value) : setEps(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg p-2 text-xs"
-            />
+              onChange={e => algorithm === 'KMeans' ? setNClusters(e.target.value) : setEps(e.target.value)} />
           </div>
-
-          <div className="sm:col-span-2">
-            <button
-              onClick={handleRun}
-              disabled={running}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg text-xs transition shadow-sm disabled:opacity-50"
-            >
-              <Play className="h-3.5 w-3.5" />
-              <span>{running ? 'Đang thực thi phân cụm...' : 'Thực thi Phân cụm Không gian ngay'}</span>
+          <div style={{ gridColumn: 'span 2' }}>
+            <button onClick={handleRun} disabled={running}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 4, border: 'none',
+                cursor: running ? 'not-allowed' : 'pointer',
+                fontFamily: F.sans, fontSize: 12, fontWeight: 600,
+                background: running ? C.surfaceAlt : C.purple, color: running ? C.textMuted : '#fff',
+                opacity: running ? 0.7 : 1,
+              }}>
+              <Play size={12} strokeWidth={1.75} />
+              {running ? 'Running...' : 'Execute Clustering'}
             </button>
           </div>
         </div>
 
         {result && (
-          <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-indigo-600" />
-              <span>Đã phân cụm thành công: <strong>{result.cluster_count}</strong> nhóm đặc trưng từ {result.total_points_clustered} điểm quan trắc.</span>
+          <div style={{ marginTop: 10, padding: '8px 12px', background: `${C.purple}0C`, border: `1px solid ${C.purple}33`, borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CheckCircle2 size={12} strokeWidth={1.75} style={{ color: C.purple }} />
+            <span style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond }}>
+              {result.cluster_count} clusters · {result.total_points_clustered} points processed
             </span>
           </div>
         )}
       </div>
 
-      {/* Cluster Summary Cards */}
-      <div>
-        <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-indigo-600" />
-          Các Nhóm Đặc trưng Khí quyển / Bề mặt đã nhận diện
-        </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.values(clusterGroups).length > 0 ? (
-            Object.values(clusterGroups).map((grp, idx) => {
-              const avgO3 = grp.count > 0 ? (grp.totalOzone / grp.count).toFixed(1) : '290';
-              const avgRefl = grp.count > 0 ? (grp.totalRefl / grp.count).toFixed(1) : '20';
-              return (
-                <div key={idx} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-800">
-                        Cụm {idx + 1}
-                      </span>
-                      <span className="text-xs text-slate-400">{grp.count} điểm</span>
-                    </div>
-                    <div className={`text-xs font-bold p-2 rounded-xl border mb-3 ${getClusterBadge(grp.characteristic)}`}>
-                      {grp.characteristic}
-                    </div>
-                  </div>
-                  <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-100 font-mono">
-                    <div className="flex justify-between">
-                      <span>Ozone TB:</span>
-                      <strong className="text-slate-900">{avgO3} DU</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Độ phản xạ 331:</span>
-                      <strong className="text-slate-900">{avgRefl}%</strong>
-                    </div>
-                  </div>
+      {/* Summary cards */}
+      {Object.values(groups).length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          {Object.values(groups).map((g, i) => {
+            const acc = clusterAccent(g.characteristic || g.tag || '');
+            const avgO3  = g.count > 0 ? (g.sumO3   / g.count).toFixed(1) : '—';
+            const avgR   = g.count > 0 ? (g.sumRefl / g.count).toFixed(1) : '—';
+            return (
+              <div key={i} style={{ ...panelStyle, borderLeft: `3px solid ${acc}`, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ ...monoStyle, fontSize: 11, fontWeight: 600, color: acc }}>Cluster {i + 1}</span>
+                  <span style={{ ...monoStyle, fontSize: 10, color: C.textMuted }}>{g.count} pts</span>
                 </div>
-              );
-            })
-          ) : (
-            <div className="col-span-4 p-8 bg-white rounded-2xl border border-slate-200 text-center text-xs text-slate-400">
-              Chưa có dữ liệu phân cụm. Hãy bấm "Thực thi Phân cụm Không gian ngay" ở trên.
-            </div>
-          )}
+                <p style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond, marginBottom: 8, lineHeight: 1.4 }}>
+                  {g.characteristic || g.tag || 'Standard atmospheric region'}
+                </p>
+                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                  {[['Ozone TB', `${avgO3} DU`], ['Reflectivity', `${avgR}%`]].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: F.mono, fontSize: 10, color: C.textMuted, marginBottom: 2 }}>
+                      <span>{k}</span><span style={{ color: C.textSecond }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      {/* Clusters Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
-          <h4 className="font-semibold text-slate-800 text-xs flex items-center gap-2">
-            <Eye className="w-4 h-4 text-slate-500" />
-            Chi tiết Điểm Phân cụm Không gian ({clusters.length} records)
-          </h4>
-          <span className="text-xs font-mono bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">
-            KMeans L2
-          </span>
+      {/* Table */}
+      <div style={{ ...panelStyle, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.surfaceAlt }}>
+          <p style={{ ...labelStyle, margin: 0 }}>Cluster Points Detail</p>
+          <span style={{ ...monoStyle, fontSize: 10, color: C.textMuted }}>{clusters.length} records</span>
         </div>
-
-        <div className="overflow-x-auto max-h-[360px]">
-          <table className="min-w-full text-xs text-left text-slate-600">
-            <thead className="bg-slate-100/80 text-slate-700 uppercase font-semibold sticky top-0 text-[11px]">
-              <tr>
-                <th className="px-4 py-2.5">Mã Cụm</th>
-                <th className="px-4 py-2.5">Vĩ độ</th>
-                <th className="px-4 py-2.5">Kinh độ</th>
-                <th className="px-4 py-2.5">Ozone (DU)</th>
-                <th className="px-4 py-2.5">Độ phản xạ 331 (%)</th>
-                <th className="px-4 py-2.5">Đặc trưng Phân loại</th>
-              </tr>
+        <div style={{ overflowX: 'auto', maxHeight: 320 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>{['Cluster','Latitude','Longitude','Ozone DU','Reflectivity','Characteristic'].map(h => (
+                <th key={h} style={thStyle}>{h}</th>
+              ))}</tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {clusters.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-slate-400">
-                    Chưa có bản ghi phân cụm nào trong Database.
-                  </td>
-                </tr>
-              ) : (
-                clusters.slice(0, 100).map((c, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition">
-                    <td className="px-4 py-2">
-                      <span className={`px-2 py-0.5 rounded font-bold font-mono text-[10.5px] ${
-                        c.cluster_id === -1 ? 'bg-slate-100 text-slate-500' : 'bg-indigo-100 text-indigo-700'
-                      }`}>
+                <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', padding: 24, color: C.textDisabled }}>
+                  No cluster data. Run clustering above.
+                </td></tr>
+              ) : clusters.slice(0, 100).map((c, i) => {
+                const acc = clusterAccent(c.characteristic || c.tag || '');
+                return (
+                  <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.surfaceAlt }}>
+                    <td style={tdStyle}>
+                      <span style={{ padding: '1px 7px', borderRadius: 4, background: c.cluster_id === -1 ? C.surfaceAlt : `${acc}18`, color: c.cluster_id === -1 ? C.textMuted : acc, fontSize: 10, fontWeight: 600, fontFamily: F.mono }}>
                         {c.cluster_id === -1 ? 'Noise' : `C-${c.cluster_id + 1}`}
                       </span>
                     </td>
-                    <td className="px-4 py-2">{c.latitude?.toFixed(2)}°</td>
-                    <td className="px-4 py-2">{c.longitude?.toFixed(2)}°</td>
-                    <td className="px-4 py-2 font-semibold text-slate-800">{c.mean_ozone?.toFixed(1)} DU</td>
-                    <td className="px-4 py-2 font-mono text-slate-700">{(c.mean_reflectivity || 20.0).toFixed(1)}%</td>
-                    <td className="px-4 py-2">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${getClusterBadge(c.characteristic || c.tag)}`}>
-                        {c.characteristic || c.tag || 'Bình thường'}
-                      </span>
+                    <td style={tdStyle}>{c.latitude?.toFixed(2)}°</td>
+                    <td style={tdStyle}>{c.longitude?.toFixed(2)}°</td>
+                    <td style={{ ...tdStyle, color: C.textPrimary, fontWeight: 600 }}>{c.mean_ozone?.toFixed(1)}</td>
+                    <td style={tdStyle}>{(c.mean_reflectivity || 20).toFixed(1)}%</td>
+                    <td style={{ ...tdStyle, color: acc, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.characteristic || c.tag || 'Normal'}
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
-
     </div>
   );
 }
