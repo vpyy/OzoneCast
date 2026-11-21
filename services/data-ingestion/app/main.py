@@ -50,18 +50,22 @@ scheduler.add_job(scheduled_ingest, "interval", seconds=_INTERVAL_SECONDS, id="i
 @app.on_event("startup")
 def startup_event():
     # 1. Chờ kết nối tới PostgreSQL
-    db_client.wait_for_db(max_retries=10, delay_sec=3)
+    db_client.wait_for_db(max_retries=10, delay_sec=2)
 
     # 2. Bắt đầu scheduler
     scheduler.start()
     print(f"[STARTUP] Ingestion scheduler started — runs every {_INTERVAL_SECONDS}s (INGESTION_INTERVAL_SECONDS)")
 
-    # 3. Chạy nạp thử nghiệm ban đầu (Warmup)
-    try:
-        print("[STARTUP WARMUP] Triggering initial data ingestion...")
-        service.scheduled_run()
-    except Exception as e:
-        print(f"[STARTUP WARMUP ERROR] {e}")
+    # 3. Chạy nạp thử nghiệm ban đầu trong background thread để không chặn Event Loop của Uvicorn
+    import threading
+    def _warmup():
+        try:
+            print("[STARTUP WARMUP] Triggering initial data ingestion in background...")
+            service.scheduled_run()
+        except Exception as e:
+            print(f"[STARTUP WARMUP ERROR] {e}")
+
+    threading.Thread(target=_warmup, daemon=True).start()
 
 
 @app.on_event("shutdown")

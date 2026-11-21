@@ -50,6 +50,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
     ports:
       - "8000:8000"
+    volumes:
+      - ./services/database-api/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,9 +75,13 @@ services:
       INGESTION_INTERVAL_SECONDS:  ${INGESTION_INTERVAL_SECONDS:-300}
     ports:
       - "8002:8002"
+    volumes:
+      - ./services/data-ingestion/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy
+      database-api:
+        condition: service_started
     networks:
       - ozonecast-net
 
@@ -96,10 +102,13 @@ services:
     ports:
       - "8004:8004"
     volumes:
+      - ./services/backend-services/app:/app/app
       - backend_models:/app/models   # persist trained .pkl files
     depends_on:
       postgres:
         condition: service_healthy
+      database-api:
+        condition: service_started
     networks:
       - ozonecast-net
 

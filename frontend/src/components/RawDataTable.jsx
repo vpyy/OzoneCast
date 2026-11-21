@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Download, Play, Filter, CheckCircle2, Database } from 'lucide-react';
 import { api } from '../api/apiClient';
 
 export default function RawDataTable({ rawData = [], granules = [], onDataMutated }) {
@@ -13,10 +12,13 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
     setMessage(null);
     try {
       const res = await api.triggerIngestMock();
-      setMessage({ type: 'success', text: `Đã cào granule NASA & bóc tách các trường: ${res.file || res.result?.filename || 'Thành công'}` });
+      setMessage({ 
+        type: 'success', 
+        text: `Ingested file: ${res.file || res.result?.filename || 'Success'}. Extracted 10 fields.` 
+      });
       if (onDataMutated) onDataMutated();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Lỗi cào dữ liệu: ' + (err.response?.data?.detail || err.message) });
+      setMessage({ type: 'error', text: 'Error: ' + (err.response?.data?.detail || err.message) });
     } finally {
       setIngesting(false);
     }
@@ -27,10 +29,13 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
     setMessage(null);
     try {
       const res = await api.runAnalysis(filterGranule || null);
-      setMessage({ type: 'success', text: `Phân tích hoàn tất: ${res.cells_processed || 0} ô lưới Silver và ${res.anomalies_found || 0} điểm bất thường.` });
+      setMessage({ 
+        type: 'success', 
+        text: `Analysis complete: ${res.cells_processed || 0} grid cells, ${res.anomalies_found || 0} anomalies.` 
+      });
       if (onDataMutated) onDataMutated();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Lỗi phân tích: ' + (err.response?.data?.detail || err.message) });
+      setMessage({ type: 'error', text: 'Error: ' + (err.response?.data?.detail || err.message) });
     } finally {
       setAnalyzing(false);
     }
@@ -43,36 +48,32 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
   return (
     <div className="space-y-4">
       {/* Action Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleIngestMock}
-            disabled={ingesting}
-            className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            <span>{ingesting ? 'Đang tải & bóc tách...' : 'Kích hoạt Cào Dữ liệu Vệ tinh (Ingest)'}</span>
-          </button>
+      <div className="bg-white p-3 border border-gray-200 flex flex-wrap gap-3 items-center">
+        <button
+          onClick={handleIngestMock}
+          disabled={ingesting}
+          className="px-4 py-2 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+        >
+          {ingesting ? 'Ingesting...' : 'Ingest Data'}
+        </button>
 
-          <button
-            onClick={handleRunAnalysis}
-            disabled={analyzing || rawData.length === 0}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition disabled:opacity-50"
-          >
-            <Play className="h-4 w-4" />
-            <span>{analyzing ? 'Đang phân tích...' : 'Kích hoạt Phân tích & Tạo lưới (ETL)'}</span>
-          </button>
-        </div>
+        <button
+          onClick={handleRunAnalysis}
+          disabled={analyzing || rawData.length === 0}
+          className="px-4 py-2 bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {analyzing ? 'Analyzing...' : 'Run Analysis'}
+        </button>
 
         {granules.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
+          <div className="flex items-center gap-2 ml-auto">
+            <label className="text-xs text-gray-700">Granule:</label>
             <select
               value={filterGranule}
               onChange={(e) => setFilterGranule(e.target.value)}
-              className="border border-slate-300 rounded-xl text-xs py-1.5 px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="border border-gray-300 px-2 py-1 text-xs bg-white"
             >
-              <option value="">Tất cả Granules ({granules.length})</option>
+              <option value="">All ({granules.length})</option>
               {granules.map(g => (
                 <option key={g.id} value={g.filename}>{g.filename}</option>
               ))}
@@ -82,83 +83,97 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
       </div>
 
       {message && (
-        <div className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
-          message.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+        <div className={`p-3 text-xs ${
+          message.type === 'success' 
+            ? 'bg-green-50 text-green-800 border border-green-200' 
+            : 'bg-red-50 text-red-800 border border-red-200'
         }`}>
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{message.text}</span>
+          {message.text}
         </div>
       )}
 
-      {/* Raw Table with Expanded Variables */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
-          <div>
-            <h3 className="font-bold text-slate-800 text-xs flex items-center gap-2">
-              <Database className="w-4 h-4 text-sky-600" />
-              Bảng Dữ liệu Thô Mở rộng (Raw Measurements - 7 Trường Vệ tinh)
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Trích xuất trực tiếp từ Swath HDF-EOS5: Latitude, Longitude, Ozone, Reflectivity331, UVAerosolIndex, SolarZenithAngle
-            </p>
-          </div>
-          <span className="text-xs bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full font-mono">
-            {filtered.length} bản ghi
-          </span>
+      {/* Info Banner */}
+      <div className="bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+        <p className="font-semibold">Raw Data Table — 10 NASA Fields</p>
+        <p className="text-[11px] mt-1">
+          <strong>Required (6):</strong> Ozone, Latitude, Longitude, Time, QualityFlags, GroundPixelQualityFlags
+          <br/>
+          <strong>Extended (4):</strong> SolarZenithAngle, CloudFraction, CloudPressure, WaterFraction
+        </p>
+      </div>
+
+      {/* Data Table */}
+      <div className="bg-white border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Raw Measurements ({filtered.length} records)
+          </h3>
+          <p className="text-xs text-gray-600 mt-1">
+            Direct extraction from OMI/Aura L2 HDF5 swath data
+          </p>
         </div>
 
-        <div className="overflow-x-auto max-h-[500px]">
-          <table className="min-w-full text-xs text-left text-slate-600">
-            <thead className="bg-slate-100/90 text-slate-700 uppercase font-semibold sticky top-0 text-[11px]">
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-xs text-left text-gray-700">
+            <thead className="bg-gray-100 text-gray-900 font-semibold border-b border-gray-200 sticky top-0">
               <tr>
-                <th className="px-3 py-2.5">Điểm #</th>
-                <th className="px-3 py-2.5">Vĩ độ (Lat)</th>
-                <th className="px-3 py-2.5">Kinh độ (Lon)</th>
-                <th className="px-3 py-2.5">Ozone Column (DU)</th>
-                <th className="px-3 py-2.5">Phản xạ 331 (%)</th>
-                <th className="px-3 py-2.5">UV Aerosol Index</th>
-                <th className="px-3 py-2.5">Góc Mặt Trời (SZA)</th>
-                <th className="px-3 py-2.5">Cờ QC</th>
-                <th className="px-3 py-2.5">Granule Nguồn</th>
+                <th className="px-3 py-2">Index</th>
+                <th className="px-3 py-2">Lat (°)</th>
+                <th className="px-3 py-2">Lon (°)</th>
+                <th className="px-3 py-2">Time (s)</th>
+                <th className="px-3 py-2">Ozone (DU)</th>
+                <th className="px-3 py-2">SZA (°)</th>
+                <th className="px-3 py-2">Cloud Frac</th>
+                <th className="px-3 py-2">Cloud Pres (hPa)</th>
+                <th className="px-3 py-2">Water Frac</th>
+                <th className="px-3 py-2">Reflectivity (%)</th>
+                <th className="px-3 py-2">UV Aerosol</th>
+                <th className="px-3 py-2">QF</th>
+                <th className="px-3 py-2">GPQ</th>
+                <th className="px-3 py-2">Granule</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-200">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-10 text-slate-400">
-                    Chưa có bản ghi dữ liệu thô. Hãy bấm "Kích hoạt Cào Dữ liệu Vệ tinh" ở trên.
+                  <td colSpan="14" className="text-center py-8 text-gray-400">
+                    No data. Click "Ingest Data" to load.
                   </td>
                 </tr>
               ) : (
                 filtered.slice(0, 150).map((r, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition">
-                    <td className="px-3 py-2 font-mono text-slate-400 text-[11px]">#{r.point_index}</td>
-                    <td className="px-3 py-2 font-medium">{r.latitude?.toFixed(3)}°</td>
-                    <td className="px-3 py-2 font-medium">{r.longitude?.toFixed(3)}°</td>
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-gray-500">{i + 1}</td>
+                    <td className="px-3 py-2">{r.latitude?.toFixed(2)}°</td>
+                    <td className="px-3 py-2">{r.longitude?.toFixed(2)}°</td>
+                    <td className="px-3 py-2 font-mono">{r.seconds_in_day?.toFixed(0)}</td>
                     <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                        r.ozone_column_raw < 220 ? 'bg-rose-100 text-rose-700' :
-                        r.ozone_column_raw > 400 ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-800'
+                      <span className={`px-2 py-0.5 text-[10px] font-semibold ${
+                        r.ozone_column_raw < 220 ? 'bg-red-100 text-red-800' :
+                        r.ozone_column_raw > 400 ? 'bg-blue-100 text-blue-800' :
+                        'bg-green-100 text-green-800'
                       }`}>
-                        {r.ozone_column_raw?.toFixed(1)} DU
+                        {r.ozone_column_raw?.toFixed(0)}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-slate-800 font-semibold">
-                      {(r.reflectivity331 ?? 20.0).toFixed(1)}%
-                    </td>
-                    <td className="px-3 py-2 font-mono text-slate-700">
-                      {(r.uv_aerosol_index ?? 0.0).toFixed(2)}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-slate-700">
-                      {(r.solar_zenith_angle ?? 45.0).toFixed(1)}°
+                    <td className="px-3 py-2 font-mono">{(r.solar_zenith_angle ?? 45).toFixed(1)}</td>
+                    <td className="px-3 py-2 font-mono">{(r.radiative_cloud_fraction ?? 0).toFixed(2)}</td>
+                    <td className="px-3 py-2 font-mono">{(r.cloud_pressure ?? 500).toFixed(0)}</td>
+                    <td className="px-3 py-2 font-mono">{((r.water_fraction ?? 0.5)).toFixed(2)}</td>
+                    <td className="px-3 py-2 font-mono">{(r.reflectivity331 ?? 20).toFixed(1)}%</td>
+                    <td className="px-3 py-2 font-mono">{(r.uv_aerosol_index ?? 0).toFixed(2)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`px-1.5 py-0.5 text-[10px] ${r.quality_flag === 0 ? 'bg-gray-100' : 'bg-yellow-100'}`}>
+                        {r.quality_flag}
+                      </span>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${r.quality_flag === 0 ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>
-                        Flag {r.quality_flag}
+                      <span className={`px-1.5 py-0.5 text-[10px] ${r.ground_pixel_quality_flag === 0 ? 'bg-gray-100' : 'bg-orange-100'}`}>
+                        {r.ground_pixel_quality_flag ?? 0}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-[10.5px] text-slate-400 truncate max-w-[150px]" title={r.granule_name}>
-                      {r.granule_name}
+                    <td className="px-3 py-2 font-mono text-[10px] text-gray-500 truncate max-w-[100px]">
+                      {r.granule_name?.substring(0, 20)}...
                     </td>
                   </tr>
                 ))

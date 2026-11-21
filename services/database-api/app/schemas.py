@@ -32,6 +32,13 @@ class RawMeasurementItem(BaseModel):
     uv_aerosol_index: Optional[float] = 0.0
     solar_zenith_angle: Optional[float] = 0.0
     quality_flag: int = 0
+    ground_pixel_quality_flag: Optional[int] = 0
+    radiative_cloud_fraction: Optional[float] = 0.0
+    cloud_pressure: Optional[float] = 500.0
+    water_fraction: Optional[float] = 0.5
+    seconds_in_day: Optional[float] = 0.0
+    scan_line: Optional[int] = 0
+    pixel_index: Optional[int] = 29
     time_raw: float = 0.0
 
 class RawMeasurementBulkCreate(BaseModel):
@@ -49,6 +56,13 @@ class RawMeasurementResponse(BaseModel):
     uv_aerosol_index: Optional[float] = 0.0
     solar_zenith_angle: Optional[float] = 0.0
     quality_flag: int
+    ground_pixel_quality_flag: Optional[int] = 0
+    radiative_cloud_fraction: Optional[float] = 0.0
+    cloud_pressure: Optional[float] = 500.0
+    water_fraction: Optional[float] = 0.5
+    seconds_in_day: Optional[float] = 0.0
+    scan_line: Optional[int] = 0
+    pixel_index: Optional[int] = 29
     time_raw: float
     created_at: datetime
     class Config:

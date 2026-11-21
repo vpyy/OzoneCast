@@ -12,6 +12,8 @@ Dữ liệu được đọc từ database-api và kết quả ghi lại vào dat
 """
 
 import os
+import time
+from datetime import datetime, timedelta
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -135,6 +137,8 @@ def health_check():
     }
 
 
+    now = datetime.utcnow()
+    scheduler = BlockingScheduler(timezone="UTC")
 @app.post("/api/clustering/run")
 def trigger_clustering(req: ClusteringRunRequest):
     """
@@ -190,6 +194,7 @@ def setup_scheduler():
         "interval",
         seconds=ANALYSIS_INTERVAL_SECONDS,
         id="analysis_job",
+        next_run_time=now + timedelta(seconds=10),
         next_run_time=None,
     )
     scheduler.add_job(
@@ -197,14 +202,14 @@ def setup_scheduler():
         "interval",
         seconds=PREDICTION_INTERVAL_SECONDS,
         id="prediction_job",
-        next_run_time=None,
+        next_run_time=now + timedelta(seconds=15),
     )
     scheduler.add_job(
         job_clustering,
         "interval",
         seconds=CLUSTERING_INTERVAL_SECONDS,
         id="clustering_job",
-        next_run_time=None,
+        next_run_time=now + timedelta(seconds=20),
     )
     scheduler.start()
     print(f"[SCHEDULER] Started successfully in background.")

@@ -218,8 +218,34 @@ class IngestionService:
                 pass
 
         total_points = len(lats)
-        step = max(1, total_points // max_points)
-        indices = np.arange(0, total_points, step)[:max_points]
+        n_pixels_per_scan = 60
+        n_scans = max(1, total_points // n_pixels_per_scan)
+
+        if total_points <= max_points:
+            indices = np.arange(total_points)
+        else:
+            # Luôn giữ trọn vẹn: mép trái (0), nadir (29, 30), mép phải (59) để vẽ đường bay & swath
+            essential_indices = []
+            for s in range(n_scans):
+                base = s * n_pixels_per_scan
+                if base + 0 < total_points:
+                    essential_indices.append(base + 0)
+                if base + 29 < total_points:
+                    essential_indices.append(base + 29)
+                if base + 30 < total_points:
+                    essential_indices.append(base + 30)
+                if base + 59 < total_points:
+                    essential_indices.append(base + 59)
+
+            remaining_quota = max(0, max_points - len(essential_indices))
+            other_candidates = np.setdiff1d(np.arange(total_points), essential_indices)
+            if len(other_candidates) > remaining_quota:
+                sub_step = max(1, len(other_candidates) // remaining_quota)
+                sampled_others = other_candidates[::sub_step][:remaining_quota]
+            else:
+                sampled_others = other_candidates
+
+            indices = np.sort(np.unique(np.concatenate([essential_indices, sampled_others])))
 
         items = [
             {
@@ -237,6 +263,8 @@ class IngestionService:
                 "water_fraction": float(np.round(wf[idx], 3)),
                 "reflectivity331": float(np.round(refl[idx], 2)),
                 "uv_aerosol_index": float(np.round(uv_aerosol[idx], 3)),
+                "pixel_index": int(idx % n_pixels_per_scan),
+                "scan_line": int(idx // n_pixels_per_scan),
             }
             for idx in indices
         ]
@@ -304,6 +332,11 @@ class IngestionService:
     # Trigger tự động định kỳ (Scheduler)
     # ------------------------------------------------------------------
     def scheduled_run(self) -> dict:
+        # Nếu chưa cấu hình NASA Earthdata credentials, tự động dùng Mock Granule 10 trường để không bị nghẽn
+        if not (self.nasa_client.username and self.nasa_client.password):
+            print("[SCHEDULER] Chưa cấu hình NASA credentials (NASA_USERNAME/NASA_PASSWORD), nạp Mock Granule 10 trường...")
+            return self.ingest_mock()
+
         result = self.ingest_from_url()
         if not result:
             print("[SCHEDULER] Không tải được từ URL chỉ định, chuyển sang nạp Mock Granule để đảm bảo dữ liệu...")

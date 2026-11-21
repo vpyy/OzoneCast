@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS raw_measurements (
     water_fraction              DOUBLE PRECISION DEFAULT 0.0,
     reflectivity331             DOUBLE PRECISION DEFAULT 0.0,
     uv_aerosol_index            DOUBLE PRECISION DEFAULT 0.0,
+    scan_line                   INTEGER          DEFAULT 0,
+    pixel_index                 INTEGER          DEFAULT 29,
     created_at                  TIMESTAMPTZ      DEFAULT NOW()
 );
 

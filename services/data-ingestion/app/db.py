@@ -70,7 +70,7 @@ class DatabaseClient:
             return False
 
     def save_raw_measurements_bulk(self, granule_name: str, items: List[Dict[str, Any]]) -> int:
-        """Bulk insert danh sách điểm đo (đầy đủ 10 trường) vào bảng raw_measurements."""
+        """Bulk insert danh sách điểm đo (đầy đủ 10 trường + pixel_index + scan_line) vào bảng raw_measurements."""
         if not items:
             return 0
 
@@ -81,14 +81,16 @@ class DatabaseClient:
                 quality_flag, ground_pixel_quality_flag,
                 solar_zenith_angle, radiative_cloud_fraction,
                 cloud_pressure, water_fraction,
-                reflectivity331, uv_aerosol_index
+                reflectivity331, uv_aerosol_index,
+                pixel_index, scan_line
             ) VALUES (
                 :granule_name, :point_index, :latitude, :longitude,
                 :seconds_in_day, :time_raw, :ozone_column_raw,
                 :quality_flag, :ground_pixel_quality_flag,
                 :solar_zenith_angle, :radiative_cloud_fraction,
                 :cloud_pressure, :water_fraction,
-                :reflectivity331, :uv_aerosol_index
+                :reflectivity331, :uv_aerosol_index,
+                :pixel_index, :scan_line
             );
         """)
 
@@ -104,10 +106,12 @@ class DatabaseClient:
             row.setdefault("ground_pixel_quality_flag", 0)
             row.setdefault("solar_zenith_angle", 0.0)
             row.setdefault("radiative_cloud_fraction", 0.0)
-            row.setdefault("cloud_pressure", 0.0)
-            row.setdefault("water_fraction", 0.0)
+            row.setdefault("cloud_pressure", 500.0)
+            row.setdefault("water_fraction", 0.5)
             row.setdefault("reflectivity331", 0.0)
             row.setdefault("uv_aerosol_index", 0.0)
+            row.setdefault("pixel_index", 29)
+            row.setdefault("scan_line", 0)
             prepared.append(row)
 
         try:

@@ -31,6 +31,13 @@ class RawMeasurement(Base):
     uv_aerosol_index = Column(Float, default=0.0)             # Chỉ số UV Aerosol Index
     solar_zenith_angle = Column(Float, default=0.0)           # Góc thiên đỉnh mặt trời (độ)
     quality_flag = Column(Integer, default=0)
+    ground_pixel_quality_flag = Column(Integer, default=0)    # GroundPixelQualityFlags
+    radiative_cloud_fraction = Column(Float, default=0.0)     # RadiativeCloudFraction (0–1)
+    cloud_pressure = Column(Float, default=500.0)             # CloudPressure (hPa)
+    water_fraction = Column(Float, default=0.5)               # WaterFraction (0=băng, 1=biển)
+    seconds_in_day = Column(Float, default=0.0)               # SecondsInDay (s) — dùng vẽ orbit track
+    scan_line = Column(Integer, default=0)                    # Chỉ số dòng quét along-track
+    pixel_index = Column(Integer, default=29)                 # 0–59 cross-track (29/30=nadir)
     time_raw = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
