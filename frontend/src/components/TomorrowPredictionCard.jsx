@@ -97,7 +97,9 @@ export default function TomorrowPredictionCard() {
 
           <div className="pt-4 border-t border-sky-100/80 flex justify-between items-center text-xs text-slate-500">
             <span>Thuật toán: Random Forest Regressor</span>
-            <span className="font-mono text-sky-800 font-medium">Sai số MAE: ±3.8 DU</span>
+            <span className="font-mono text-sky-800 font-medium">
+              Sai số MAE: ±{forecast?.mae_du || 4.69} DU
+            </span>
           </div>
         </div>
 

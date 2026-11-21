@@ -3,7 +3,8 @@ import axios from 'axios';
 export const API_BASE = {
   db: import.meta.env.VITE_DB_API_URL || 'http://localhost:8000',
   ws: import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/stream',
-  ingest: import.meta.env.VITE_INGEST_API_URL || 'http://localhost:8002'
+  ingest: import.meta.env.VITE_INGEST_API_URL || 'http://localhost:8002',
+  prediction: import.meta.env.VITE_PREDICTION_API_URL || 'http://localhost:8004'
 };
 
 export const api = {
@@ -47,6 +48,17 @@ export const api = {
 
   getTomorrowPrediction: () =>
     axios.get(`${API_BASE.db}/api/prediction/tomorrow`).then((res) => res.data),
+
+  // ── Machine Learning & AI Prediction (backend-services :8004 kèm fallback :8000) ──
+  predictOzone: (latitude, longitude, datetime = null) =>
+    axios.post(`${API_BASE.prediction}/api/prediction/predict`, { latitude, longitude, datetime })
+      .catch(() => axios.post(`${API_BASE.db}/api/prediction/predict`, { latitude, longitude, datetime }))
+      .then((res) => res.data),
+
+  trainModel: () =>
+    axios.post(`${API_BASE.prediction}/api/prediction/train`)
+      .catch(() => axios.post(`${API_BASE.db}/api/prediction/train`))
+      .then((res) => res.data),
 
   // ── Trigger Ingest (qua Service 1: data-ingestion :8002) ───────────────────
   triggerIngestMock: () =>
