@@ -58,6 +58,12 @@ class ClusteringRunRequest(BaseModel):
     n_clusters: Optional[int] = 4
 
 
+class PredictionPointRequest(BaseModel):
+    latitude: float
+    longitude: float
+    datetime: Optional[str] = None
+
+
 # ── Job functions ───────────────────────────────────────────────────────────────
 
 def job_analysis():
@@ -159,6 +165,18 @@ def trigger_analysis(payload: Optional[Dict[str, Any]] = None):
 def trigger_train():
     """Trigger manual model retraining."""
     return prediction_model.train_from_database()
+
+
+@app.post("/api/prediction/predict")
+def trigger_predict_point(req: PredictionPointRequest):
+    """Dự báo Ozone DU và nhãn rủi ro theo tọa độ và ngày chỉ định."""
+    dt = None
+    if req.datetime:
+        try:
+            dt = datetime.fromisoformat(req.datetime.replace("Z", "+00:00"))
+        except Exception:
+            dt = None
+    return prediction_model.predict(lat=req.latitude, lon=req.longitude, dt=dt)
 
 
 # ── Main: khởi động scheduler & web server ─────────────────────────────────────
