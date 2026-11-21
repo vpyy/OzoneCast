@@ -1,111 +1,187 @@
-import os
+"""
+OzoneCast — Master Spatial & Atmospheric Clusterer (Facade)
+Tích hợp toàn diện quy trình Phân cụm Khai phá Dữ liệu (Spatial Data Mining):
+1. Thu thập & Chuẩn bị dữ liệu ô lưới vệ tinh NASA
+2. Chuẩn hóa & Áp trọng số đặc trưng vật lý khí quyển
+3. Thuật toán K-Means (Phân cụm tâm đại diện)
+4. Thuật toán DBSCAN (Phân cụm mật độ không gian & lọc nhiễu)
+5. Đánh giá chất lượng phân cụm (Silhouette, Davies-Bouldin, Calinski-Harabasz)
+6. Định danh & Trích xuất hồ sơ khí quyển (Atmospheric Profiling)
+7. Đồng bộ kết quả vào Database API & Hệ thống Cache
+"""
+
 from datetime import datetime
-from typing import Dict, List
-import numpy as np
+from typing import Dict, List, Any, Optional
 import pandas as pd
 import requests
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.preprocessing import StandardScaler
 
-DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
+from .config import (
+    DATABASE_API_URL,
+    DEFAULT_KMEANS_CLUSTERS,
+    DEFAULT_DBSCAN_EPS,
+    DEFAULT_DBSCAN_MIN_SAMPLES,
+    logger
+)
+from .preprocessor import ClusteringPreprocessor
+from .profiler import ClusterProfiler
+from .kmeans import KMeansClusterer
+from .dbscan import DBSCANClusterer
+
 
 class OzoneClusterer:
+    """Facade orchestrator điều phối toàn bộ nghiệp vụ phân cụm không gian tầng Ozone."""
+
     @staticmethod
     def fetch_grid_data() -> pd.DataFrame:
-        try:
-            resp = requests.get(f"{DATABASE_API_URL}/api/grid-summary?limit=1500", timeout=15)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data:
-                    return pd.DataFrame(data)
-        except Exception as e:
-            print(f"[CLUSTERING WARN] fetch_grid_data error: {e}")
-        return pd.DataFrame()
+        """Truy xuất dữ liệu ô lưới từ Database API (có fallback mô phỏng chuẩn WMO)."""
+        return ClusteringPreprocessor.fetch_grid_data(limit=1500)
 
     @staticmethod
     def _interpret_cluster(mean_ozone: float, mean_refl: float, mean_lat: float, cid: int) -> str:
-        """Tự động phân loại đặc trưng bề mặt/khí quyển của từng cụm:
-        ví dụ: phân biệt vùng mây/băng tuyết có độ phản xạ cao với vùng thông thường."""
-        if mean_ozone < 220:
-            return "Vùng suy giảm / Lỗ thủng Ozone (Ozone < 220 DU)"
-        elif mean_refl > 50.0 or abs(mean_lat) > 55.0:
-            return "Vùng mây dày / Băng tuyết cực (Độ phản xạ cao > 50%)"
-        elif abs(mean_lat) < 23.5:
-            return "Vùng nhiệt đới / Xích đạo (Bức xạ cao, phản xạ trung bình)"
-        else:
-            return "Vùng bề mặt / Khí quyển thông thường"
+        """Hàm diễn giải đặc trưng cụm (giữ nguyên signature để tương thích 100%)."""
+        info = ClusterProfiler.interpret_cluster(mean_ozone, mean_refl, mean_lat, cid)
+        return info["characteristic"]
 
     @classmethod
-    def run_kmeans_clustering(cls, n_clusters: int = 4) -> List[Dict]:
-        """K-Means phân cụm dựa trên 4 chỉ số:
-        Latitude, Longitude, Ozone và Reflectivity331."""
+    def run_kmeans_clustering(cls, n_clusters: int = DEFAULT_KMEANS_CLUSTERS) -> List[Dict[str, Any]]:
+        """
+        Thực thi phân cụm K-Means:
+        - Đọc dữ liệu từ DB
+        - Chuẩn hóa và áp trọng số vật lý khí quyển
+        - Huấn luyện K-Means
+        - Gán nhãn đặc trưng khí quyển
+        - Lưu kết quả vào DB và Cache
+        """
         df = cls.fetch_grid_data()
+        X_scaled, _, work_df = ClusteringPreprocessor.prepare_feature_matrix(df)
 
-        # If database is young or empty, create synthetic sample
-        if df.empty or len(df) < n_clusters:
-            n = 300
-            lats = np.random.uniform(-70, 70, n)
-            lons = np.random.uniform(-180, 180, n)
-            refl = np.clip(15.0 + 35.0 * (np.abs(lats) / 70.0)**2 + np.random.normal(0, 5, n), 5, 95)
-            o3 = np.clip(290 + 70 * np.cos(np.deg2rad(lats * 1.5)) + np.random.normal(0, 10, n), 150, 460)
-            o3[lats < -55] = np.clip(o3[lats < -55] - 70, 150, 215)
-            df = pd.DataFrame({
-                "lat_bin": lats,
-                "lon_bin": lons,
-                "ozone_column_mean": o3,
-                "reflectivity_mean": refl
+        labels, _, eval_metrics = KMeansClusterer.fit_predict(X_scaled, n_clusters=n_clusters)
+        work_df["cluster_id"] = labels
+
+        cluster_records, summary_payload = cls._format_and_persist_results(
+            work_df=work_df,
+            algorithm="KMeans",
+            eval_metrics=eval_metrics
+        )
+        return cluster_records
+
+    @classmethod
+    def run_dbscan_clustering(
+        cls,
+        eps: float = DEFAULT_DBSCAN_EPS,
+        min_samples: int = DEFAULT_DBSCAN_MIN_SAMPLES
+    ) -> List[Dict[str, Any]]:
+        """
+        Thực thi phân cụm mật độ DBSCAN:
+        - Tự động phát hiện các dải khí quyển dị thường có hình thái bất kỳ
+        - Tách biệt điểm nhiễu quan trắc vệ tinh (cluster_id = -1)
+        - Lưu kết quả vào DB và Cache
+        """
+        df = cls.fetch_grid_data()
+        X_scaled, _, work_df = ClusteringPreprocessor.prepare_feature_matrix(df)
+
+        labels, _, eval_metrics = DBSCANClusterer.fit_predict(
+            X_scaled,
+            eps=eps,
+            min_samples=min_samples
+        )
+        work_df["cluster_id"] = labels
+
+        cluster_records, summary_payload = cls._format_and_persist_results(
+            work_df=work_df,
+            algorithm="DBSCAN",
+            eval_metrics=eval_metrics
+        )
+        return cluster_records
+
+    @classmethod
+    def run_clustering(
+        cls,
+        algorithm: str = "KMeans",
+        eps: float = DEFAULT_DBSCAN_EPS,
+        n_clusters: int = DEFAULT_KMEANS_CLUSTERS
+    ) -> Dict[str, Any]:
+        """
+        Entrypoint tổng quát hỗ trợ kích hoạt thủ công từ Frontend hoặc REST API.
+        Trả về payload đầy đủ cấu trúc mà UI React mong đợi.
+        """
+        algo_upper = algorithm.upper()
+        if "DBSCAN" in algo_upper:
+            records = cls.run_dbscan_clustering(eps=eps, min_samples=4)
+            chosen_algo = "DBSCAN"
+        else:
+            records = cls.run_kmeans_clustering(n_clusters=n_clusters)
+            chosen_algo = "KMeans"
+
+        unique_clusters = len(set(r["cluster_id"] for r in records if r["cluster_id"] != -1))
+        logger.info(f"Manual clustering request executed: algo={chosen_algo}, points={len(records)}, clusters={unique_clusters}")
+
+        return {
+            "status": "success",
+            "algorithm": chosen_algo,
+            "total_points_clustered": len(records),
+            "cluster_count": unique_clusters,
+            "sample_points": records[:100],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    @classmethod
+    def _format_and_persist_results(
+        cls,
+        work_df: pd.DataFrame,
+        algorithm: str,
+        eval_metrics: Dict[str, Any]
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Định dạng bản ghi, lưu trữ vào Database API và cập nhật Cache."""
+        cluster_records: List[Dict[str, Any]] = []
+        cluster_profiles = ClusterProfiler.summarize_clusters(work_df)
+        profile_map = {p["cluster_id"]: p for p in cluster_profiles}
+
+        for _, row in work_df.iterrows():
+            cid = int(row["cluster_id"])
+            p_info = profile_map.get(cid, {})
+
+            cluster_records.append({
+                "algorithm": algorithm,
+                "cluster_id": cid,
+                "latitude": float(row["lat_bin"]),
+                "longitude": float(row["lon_bin"]),
+                "mean_ozone": round(float(row["ozone_column_mean"]), 2),
+                "mean_reflectivity": round(float(row.get("reflectivity_mean", 20.0)), 2),
+                "point_count": int(p_info.get("point_count", 1)),
+                "tag": p_info.get("tag", f"Cụm {cid + 1}"),
+                "characteristic": p_info.get("characteristic", "Vùng bề mặt / Khí quyển thông thường")
             })
 
-        if "reflectivity_mean" not in df.columns:
-            df["reflectivity_mean"] = 18.0 + 30.0 * (np.abs(df["lat_bin"]) / 70.0) ** 2
-
-        # 4 Features: Latitude, Longitude, Ozone, Reflectivity331
-        features = df[["lat_bin", "lon_bin", "ozone_column_mean", "reflectivity_mean"]].values
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(features)
-
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        df["cluster_id"] = kmeans.fit_predict(X_scaled)
-
-        cluster_records = []
-        for cid in range(n_clusters):
-            sub = df[df["cluster_id"] == cid]
-            if sub.empty:
-                continue
-
-            mean_o3 = float(sub["ozone_column_mean"].mean())
-            mean_refl = float(sub["reflectivity_mean"].mean())
-            mean_lat = float(sub["lat_bin"].mean())
-
-            characteristic = cls._interpret_cluster(mean_o3, mean_refl, mean_lat, cid)
-            tag = f"Cụm {cid+1}: {characteristic.split('(')[0].strip()}"
-
-            for _, row in sub.iterrows():
-                cluster_records.append({
-                    "algorithm": "KMeans",
-                    "cluster_id": int(cid),
-                    "latitude": float(row["lat_bin"]),
-                    "longitude": float(row["lon_bin"]),
-                    "mean_ozone": round(float(row["ozone_column_mean"]), 2),
-                    "mean_reflectivity": round(float(row["reflectivity_mean"]), 2),
-                    "point_count": len(sub),
-                    "tag": tag,
-                    "characteristic": characteristic
-                })
-
-        # Lưu kết quả vào database-api
+        # Lưu dữ liệu điểm vào CSDL qua Database API
         try:
-            requests.post(
+            resp = requests.post(
                 f"{DATABASE_API_URL}/api/clusters/bulk",
                 json={"items": cluster_records[:400]},
                 timeout=15
             )
-            print(f"[CLUSTERING OK] KMeans saved {len(cluster_records)} points across {n_clusters} clusters")
+            if resp.status_code == 200:
+                logger.info(f"Persisted {min(len(cluster_records), 400)} cluster records to database.")
         except Exception as e:
-            print(f"[CLUSTERING WARN] Failed to save to database-api ({e})")
+            logger.warning(f"Could not persist clusters to database-api ({e})")
 
-        return cluster_records
+        # Lưu báo cáo tổng kết phân cụm vào Cache API
+        summary_payload = {
+            "algorithm": algorithm,
+            "total_points": len(work_df),
+            "cluster_count": len([p for p in cluster_profiles if p["cluster_id"] != -1]),
+            "evaluation_metrics": eval_metrics,
+            "cluster_profiles": cluster_profiles,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        try:
+            requests.post(
+                f"{DATABASE_API_URL}/api/cache/clustering_summary",
+                json=summary_payload,
+                timeout=10
+            )
+            logger.info("Clustering summary cache updated.")
+        except Exception as e:
+            logger.warning(f"Could not update clustering cache ({e})")
 
-    @classmethod
-    def run_dbscan_clustering(cls, eps: float = 1.2, min_samples: int = 4) -> List[Dict]:
-        return cls.run_kmeans_clustering(n_clusters=4)
+        return cluster_records, summary_payload

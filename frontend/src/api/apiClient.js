@@ -43,10 +43,17 @@ export const api = {
 
   // Clustering API triggers
   runClustering: (algorithm = 'KMeans', eps = 1.2, n_clusters = 4) => 
-    axios.post(`${API_BASE.clustering}/api/clustering/run`, { algorithm, eps, n_clusters }).then(res => res.data),
+    axios.post(`${API_BASE.clustering}/api/clustering/run`, { algorithm, eps, n_clusters })
+      .catch(() => axios.post(`${API_BASE.db}/api/clustering/run`, { algorithm, eps, n_clusters }))
+      .then(res => res.data),
 
   // Prediction API triggers
   predictOzone: (latitude, longitude, datetime = null) => 
-    axios.post(`${API_BASE.prediction}/api/prediction/predict`, { latitude, longitude, datetime }).then(res => res.data),
-  trainModel: () => axios.post(`${API_BASE.prediction}/api/prediction/train`).then(res => res.data)
+    axios.post(`${API_BASE.prediction}/api/prediction/predict`, { latitude, longitude, datetime })
+      .catch(() => axios.post(`${API_BASE.db}/api/prediction/predict`, { latitude, longitude, datetime }))
+      .then(res => res.data),
+  trainModel: () => 
+    axios.post(`${API_BASE.prediction}/api/prediction/train`)
+      .catch(() => axios.post(`${API_BASE.db}/api/prediction/train`))
+      .then(res => res.data)
 };
