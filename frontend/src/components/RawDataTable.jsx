@@ -96,10 +96,10 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
           <div>
             <h3 className="font-bold text-slate-800 text-xs flex items-center gap-2">
               <Database className="w-4 h-4 text-sky-600" />
-              Bảng Dữ liệu Thô Mở rộng (Raw Measurements - 7 Trường Vệ tinh)
+              Bảng Dữ liệu Thô Mở rộng (Raw Measurements - 10 Trường Vệ tinh NASA)
             </h3>
             <p className="text-[11px] text-slate-500">
-              Trích xuất trực tiếp từ Swath HDF-EOS5: Latitude, Longitude, Ozone, Reflectivity331, UVAerosolIndex, SolarZenithAngle
+              Trích xuất trực tiếp từ Swath HDF-EOS5: Latitude, Longitude, Ozone, SecondsInDay, QualityFlags, GroundPixelFlags, SZA, CloudFraction, CloudPressure, WaterFraction
             </p>
           </div>
           <span className="text-xs bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full font-mono">
@@ -115,9 +115,10 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
                 <th className="px-3 py-2.5">Vĩ độ (Lat)</th>
                 <th className="px-3 py-2.5">Kinh độ (Lon)</th>
                 <th className="px-3 py-2.5">Ozone Column (DU)</th>
-                <th className="px-3 py-2.5">Phản xạ 331 (%)</th>
-                <th className="px-3 py-2.5">UV Aerosol Index</th>
-                <th className="px-3 py-2.5">Góc Mặt Trời (SZA)</th>
+                <th className="px-3 py-2.5">Góc MT (SZA)</th>
+                <th className="px-3 py-2.5">Mây (RCF)</th>
+                <th className="px-3 py-2.5">Áp suất mây (hPa)</th>
+                <th className="px-3 py-2.5">Nước/Băng</th>
                 <th className="px-3 py-2.5">Cờ QC</th>
                 <th className="px-3 py-2.5">Granule Nguồn</th>
               </tr>
@@ -125,7 +126,7 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-10 text-slate-400">
+                  <td colSpan="10" className="text-center py-10 text-slate-400">
                     Chưa có bản ghi dữ liệu thô. Hãy bấm "Kích hoạt Cào Dữ liệu Vệ tinh" ở trên.
                   </td>
                 </tr>
@@ -137,20 +138,24 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
                     <td className="px-3 py-2 font-medium">{r.longitude?.toFixed(3)}°</td>
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                        !r.ozone_column_raw ? 'bg-slate-100 text-slate-500' :
                         r.ozone_column_raw < 220 ? 'bg-rose-100 text-rose-700' :
                         r.ozone_column_raw > 400 ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-800'
                       }`}>
-                        {r.ozone_column_raw?.toFixed(1)} DU
+                        {r.ozone_column_raw != null ? `${r.ozone_column_raw.toFixed(1)} DU` : 'NULL'}
                       </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-slate-800 font-semibold">
-                      {(r.reflectivity331 ?? 20.0).toFixed(1)}%
-                    </td>
-                    <td className="px-3 py-2 font-mono text-slate-700">
-                      {(r.uv_aerosol_index ?? 0.0).toFixed(2)}
                     </td>
                     <td className="px-3 py-2 font-mono text-slate-700">
                       {(r.solar_zenith_angle ?? 45.0).toFixed(1)}°
+                    </td>
+                    <td className="px-3 py-2 font-mono text-slate-800 font-semibold">
+                      {((r.radiative_cloud_fraction ?? 0.0) * 100).toFixed(1)}%
+                    </td>
+                    <td className="px-3 py-2 font-mono text-slate-700">
+                      {(r.cloud_pressure ?? 0.0).toFixed(0)} hPa
+                    </td>
+                    <td className="px-3 py-2 font-mono text-slate-600">
+                      {(r.water_fraction ?? 0.0) > 0.5 ? 'Biển/Nước' : 'Đất/Băng'}
                     </td>
                     <td className="px-3 py-2">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${r.quality_flag === 0 ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>

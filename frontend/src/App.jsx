@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import DashboardStats from './components/DashboardStats';
 import OzoneMap from './components/OzoneMap';
@@ -8,7 +8,8 @@ import PredictionPanel from './components/PredictionPanel';
 import AnalyticsCharts from './components/AnalyticsCharts';
 import TrendSeasonalCorrelation from './components/TrendSeasonalCorrelation';
 import TomorrowPredictionCard from './components/TomorrowPredictionCard';
-import { api } from './api/apiClient';
+import { api, API_BASE } from './api/apiClient';
+import { useWebSocket } from './lib/useWebSocket';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -20,7 +21,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [mapMode, setMapMode] = useState('grid'); // 'grid' or 'raw'
 
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     try {
       const [statsRes, granulesRes, rawRes, gridRes, clustersRes] = await Promise.allSettled([
@@ -41,11 +42,46 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Xử lý thông điệp từ WebSocket stream
+  const handleWsMessage = useCallback((payload) => {
+    if (payload.type === 'snapshot' || payload.type === 'update') {
+      const d = payload.data;
+      if (d) {
+        setStats((prev) => ({
+          ...prev,
+          total_granules: d.total_granules ?? prev?.total_granules ?? 0,
+          total_raw_measurements: d.total_raw_measurements ?? prev?.total_raw_measurements ?? 0,
+          total_grid_cells: d.total_grid_cells ?? prev?.total_grid_cells ?? 0,
+          avg_ozone_du: d.avg_ozone_du ?? prev?.avg_ozone_du ?? 290.0,
+          min_ozone_du: d.min_ozone_du ?? prev?.min_ozone_du ?? 180.0,
+          max_ozone_du: d.max_ozone_du ?? prev?.max_ozone_du ?? 450.0,
+          anomalies_detected: d.anomalies_detected ?? prev?.anomalies_detected ?? 0,
+          last_updated: d.last_updated || new Date().toISOString()
+        }));
+
+        // Khi có sự kiện update, cập nhật dữ liệu bản đồ và bảng mà không reload trang
+        if (payload.type === 'update') {
+          api.getRawMeasurements(250).then(setRawData).catch(() => {});
+          api.getGridSummary(500).then(setGridData).catch(() => {});
+          api.getGranules().then(setGranules).catch(() => {});
+        }
+      }
+    }
+  }, []);
+
+  // Kết nối WebSocket thời gian thực (có tự động reconnect & fallback REST)
+  const { status: wsStatus } = useWebSocket({
+    url: API_BASE.ws,
+    onMessage: handleWsMessage,
+    onFallbackPoll: loadAllData,
+    enabled: true
+  });
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [loadAllData]);
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-row font-sans">
@@ -55,6 +91,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         onRefresh={loadAllData}
         loading={loading}
+        wsStatus={wsStatus}
       />
 
       {/* ── Main Dashboard Workspace ── */}
@@ -121,7 +158,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab 6: Bảng Dữ liệu Thô (7 Trường) */}
+          {/* Tab 6: Bảng Dữ liệu Thô (10 Trường Vệ tinh) */}
           {activeTab === 'raw' && (
             <RawDataTable
               rawData={rawData}

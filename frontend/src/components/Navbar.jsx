@@ -1,7 +1,7 @@
 import React from 'react';
 import { Activity, Database, Layers, BrainCircuit, Globe, RefreshCw, LineChart, TrendingUp, CheckCircle, Server } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, onRefresh, loading }) {
+export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, wsStatus = 'disconnected' }) {
   const navItems = [
     { id: 'overview', label: 'Bản đồ & Tổng quan', desc: 'Lưới Silver & Điểm thô Swath', icon: Globe },
     { id: 'analytics', label: 'Biểu đồ Chuỗi thời gian', desc: 'Line, Scatter & Histogram', icon: LineChart },
@@ -30,14 +30,35 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading }) 
         </div>
 
         {/* Live Status Pill */}
-        <div className="mt-4 flex items-center justify-between bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 text-[11px]">
-          <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Hệ thống đang hoạt động
-          </span>
-          <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
-            7 Containers
-          </span>
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800 text-[11px]">
+            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Hệ thống hoạt động
+            </span>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+              PostgreSQL :8000
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between bg-slate-950/40 px-3 py-1.5 rounded-lg border border-slate-800/80 text-[11px]">
+            <span className="flex items-center gap-1.5 font-medium">
+              <span className={`w-2 h-2 rounded-full ${
+                wsStatus === 'connected' ? 'bg-sky-400 animate-ping' :
+                wsStatus === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-slate-500'
+              }`}></span>
+              <span className={
+                wsStatus === 'connected' ? 'text-sky-300' :
+                wsStatus === 'reconnecting' ? 'text-amber-300' : 'text-slate-400'
+              }>
+                {wsStatus === 'connected' ? 'WS: Trực tiếp' :
+                 wsStatus === 'reconnecting' ? 'WS: Đang nối lại' : 'WS: Fallback REST'}
+              </span>
+            </span>
+            <span className="text-[10px] font-mono text-slate-400">
+              /ws/stream
+            </span>
+          </div>
         </div>
       </div>
 

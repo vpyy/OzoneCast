@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "skills": {
+    "aeon": {
+      "source": "K-Dense-AI/scientific-agent-skills",
+      "commit": "ec59a29a03d5c40f73ab40878df04860bc00e876",
+      "sourceType": "github",
+      "skillPath": "skills/aeon/SKILL.md",
+      "computedHash": "7cecc614b035271ffa713840b3d8cf36a84478c3a6bfc79be248dd60b5a1fda7"
+    },
+    "ml-modeling": {
+      "source": "balintdecsi/skills",
+      "commit": "d9eb355a27ee1bca3951c067211209d65a1beb58",
+      "sourceType": "github",
+      "skillPath": "ml-modeling/SKILL.md",
+      "computedHash": "5bacb866fca3a2704602d35dc611c592cf75a15a14cd80b85146a6f50fa877ac"
+    },
+    "rest-api-guidelines": {
+      "source": "wibaek/skills",
+      "commit": "c2c6f3ccec2fea7e3a98d7c772a472a506df9cf6",
+      "sourceType": "github",
+      "skillPath": "skills/rest-api-guidelines/SKILL.md",
+      "computedHash": "67e2b94b4813b8f415d19c954b047576edb7090e7c0eea1646d9d7a1aa3d8dc5"
+    },
+    "scikit-learn": {
+      "source": "K-Dense-AI/scientific-agent-skills",
+      "commit": "ec59a29a03d5c40f73ab40878df04860bc00e876",
+      "sourceType": "github",
+      "skillPath": "skills/scikit-learn/SKILL.md",
+      "computedHash": "072badf63201170ce6ffde828585222bca78b5551cf8e02e10bb8430ab602f1b"
+    },
+    "time-series-forecasting": {
+      "source": "balintdecsi/skills",
+      "commit": "d9eb355a27ee1bca3951c067211209d65a1beb58",
+      "sourceType": "github",
+      "skillPath": "time-series-forecasting/SKILL.md",
+      "computedHash": "310dfca31b27da4c72c14c86dfe86cf3f4e38790ad6612e0f3afe67db5bd3f70"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "7991ed4fbecdac23f47c1a40c243e00a212a9e7f3604db93959b3ae11dffe299"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "commit": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "5994e4cfd86144903d2ba750f862b9e36af15e3297aac983679e347b99f6cb71"
+    }
+  }
+}

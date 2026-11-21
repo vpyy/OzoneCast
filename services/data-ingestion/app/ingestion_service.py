@@ -228,7 +228,7 @@ class IngestionService:
                 "longitude": float(np.round(lons[idx], 4)),
                 "seconds_in_day": float(np.round(seconds_in_day[idx], 2)),
                 "time_raw": float(np.round(times[idx], 2)),
-                "ozone_column_raw": float(np.round(o3[idx], 2)),
+                "ozone_column_raw": None if (float(o3[idx]) < 0 or float(o3[idx]) > 1000 or np.isnan(o3[idx])) else float(np.round(o3[idx], 2)),
                 "quality_flag": int(qf[idx]),
                 "ground_pixel_quality_flag": int(gqf[idx]),
                 "solar_zenith_angle": float(np.round(sza[idx], 2)),

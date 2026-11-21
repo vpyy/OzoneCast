@@ -1,0 +1,4 @@
+interface:
+  display_name: "REST API Guidelines"
+  short_description: "Design and review consistent HTTP+JSON REST APIs"
+  default_prompt: "Use $rest-api-guidelines to design or review an HTTP+JSON REST API with consistent resource naming, update semantics, error handling, and compatibility rules."

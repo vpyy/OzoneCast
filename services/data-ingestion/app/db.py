@@ -11,10 +11,15 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/ozone_db")
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 class DatabaseClient:
     def __init__(self, db_url: Optional[str] = None):
-        self.db_url = db_url or DATABASE_URL
+        url = db_url or DATABASE_URL
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        self.db_url = url
         self._engine: Optional[Engine] = None
 
     def get_engine(self) -> Engine:

@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS raw_measurements (
     longitude                   DOUBLE PRECISION NOT NULL,
     seconds_in_day              DOUBLE PRECISION DEFAULT 0.0,
     time_raw                    DOUBLE PRECISION DEFAULT 0.0,
-    ozone_column_raw            DOUBLE PRECISION NOT NULL,
+    ozone_column_raw            DOUBLE PRECISION DEFAULT NULL,
     quality_flag                INTEGER          DEFAULT 0,
     ground_pixel_quality_flag   INTEGER          DEFAULT 0,
     solar_zenith_angle          DOUBLE PRECISION DEFAULT 0.0,
