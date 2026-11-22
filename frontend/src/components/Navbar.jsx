@@ -8,7 +8,7 @@ const NAV = [
   { id: 'trend_corr', label: 'Xu hướng & Tương quan', desc: 'Trend · Seasonal · Pearson r', icon: TrendingUp   },
   { id: 'clustering', label: 'Phân cụm Khu vực',      desc: 'K-Means · DBSCAN',             icon: Layers       },
   { id: 'prediction', label: 'Dự báo & Học máy',      desc: 'Regressor · Classifier',       icon: BrainCircuit },
-  { id: 'raw',        label: 'Dữ liệu Thô',           desc: 'HDF-EOS5 · 10 trường',        icon: Database     },
+  { id: 'raw',        label: 'Bảng Dữ liệu',          desc: 'Bảng dữ liệu đo đạc NASA',     icon: Database     },
 ];
 
 export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, wsStatus = 'disconnected' }) {

@@ -471,7 +471,7 @@ export default function OzoneMap({
                 Bản đồ Không gian Ozone Toàn cầu — Trọng tâm Bán đảo Nam Cực
               </h3>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
-                Lưới 0.25° OMI OMTO3G
+                Lưới 0.25° OMI OMTO3
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">

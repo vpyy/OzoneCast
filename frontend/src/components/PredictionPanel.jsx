@@ -322,7 +322,7 @@ export default function PredictionPanel() {
                       fontFamily={F.mono}
                       fontWeight={isHole ? '700' : '400'}
                     >
-                      {v} {isHole ? 'DU (Ngưỡng)' : ''}
+                      {v} {isHole ? 'DU' : ''}
                     </text>
                   </g>
                 );
