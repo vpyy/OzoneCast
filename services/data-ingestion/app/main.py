@@ -1,28 +1,28 @@
 """
 Data Ingestion Microservice — Main Entry Point.
 Nhiệm vụ:
-  - Tải file HDF5/HE5 từ URL NASA (hoặc NASA CMR, hoặc mock)
-  - Trích xuất đầy đủ 10 trường dữ liệu (Ozone, Tọa độ, Thời gian, Cờ lỗi, Mây, Góc MT, Nước/Băng)
-  - Lưu trực tiếp vào cơ sở dữ liệu PostgreSQL (có cơ chế retry kết nối)
-  - Chạy theo chu kỳ định kỳ cấu hình qua INGESTION_INTERVAL_SECONDS (mặc định 300s = 5 phút)
+  - Tự động Discovery các granule OMTO3G mới từ NASA OzoneAQ API (mỗi 2 giờ)
+  - Xử lý hàng đợi pending granules: Tải stream, cắt vùng Bán đảo Nam Cực, lọc chất lượng
+  - Ghi idempotent vào raw_measurements và tổng hợp hàng ngày vào ozone_daily
+  - Quản lý trạng thái qua bảng ingested_granules
 """
 
 import os
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, date
+from typing import Optional, Dict, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .ingestion_service import IngestionService, DEFAULT_DATA_URL
+from .ingestion_service import IngestionService
 from .db import db_client
 
 app = FastAPI(
     title="Ozone Data Ingestion Microservice",
-    version="2.0.0",
-    description="Microservice nạp & trích xuất 10 trường dữ liệu OMI HDF5/HE5 từ NASA vào PostgreSQL",
+    version="2.1.0",
+    description="Microservice tự động thu thập và trích xuất dữ liệu OMI OMTO3G Bán đảo Nam Cực vào PostgreSQL",
 )
 
 app.add_middleware(
@@ -35,16 +35,38 @@ app.add_middleware(
 
 service = IngestionService()
 
-# ── Scheduled job: Chu kỳ chạy định kỳ ─────────────────────────────────────────
-def scheduled_ingest():
-    print(f"[SCHEDULER] data-ingestion triggered at {datetime.utcnow().isoformat()}")
-    result = service.scheduled_run()
-    print(f"[SCHEDULER] Ingest complete: {result.get('filename')} (saved: {result.get('saved_to_db', 0)} points)")
-
-
-_INTERVAL_SECONDS = int(os.getenv("INGESTION_INTERVAL_SECONDS", "300"))
+# ── Scheduler Jobs ────────────────────────────────────────────────────────────
 scheduler = BackgroundScheduler()
-scheduler.add_job(scheduled_ingest, "interval", seconds=_INTERVAL_SECONDS, id="ingest_job")
+
+_DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL_SECONDS", "7200"))
+_INGESTION_INTERVAL = int(os.getenv("INGESTION_INTERVAL_SECONDS", "300"))
+
+
+def scheduled_discovery_job():
+    """Job định kỳ quét tìm file OMTO3G mới từ NASA OzoneAQ."""
+    print(f"\n[SCHEDULER DISCOVERY] Bắt đầu quét tìm granule OMTO3G lúc {datetime.utcnow().isoformat()}")
+    try:
+        count = service.run_discovery()
+        print(f"[SCHEDULER DISCOVERY] Hoàn tất quét. Tìm thấy {count} granule mới.")
+    except Exception as e:
+        print(f"[SCHEDULER DISCOVERY ERROR] Lỗi khi chạy discovery job: {e}")
+
+
+def scheduled_queue_job():
+    """Job định kỳ xử lý các granule đang ở trạng thái pending trong hàng đợi."""
+    print(f"[SCHEDULER QUEUE] Kiểm tra hàng đợi nạp dữ liệu lúc {datetime.utcnow().isoformat()}")
+    try:
+        processed = service.process_pending_queue(batch_size=2)
+        if processed > 0:
+            print(f"[SCHEDULER QUEUE] Đã xử lý {processed} granule trong đợt này.")
+        else:
+            print("[SCHEDULER QUEUE] Không có granule nào cần xử lý.")
+    except Exception as e:
+        print(f"[SCHEDULER QUEUE ERROR] Lỗi khi xử lý hàng đợi: {e}")
+
+
+scheduler.add_job(scheduled_discovery_job, "interval", seconds=_DISCOVERY_INTERVAL, id="discovery_job")
+scheduler.add_job(scheduled_queue_job, "interval", seconds=_INGESTION_INTERVAL, id="queue_job")
 
 
 @app.on_event("startup")
@@ -54,14 +76,20 @@ def startup_event():
 
     # 2. Bắt đầu scheduler
     scheduler.start()
-    print(f"[STARTUP] Ingestion scheduler started — runs every {_INTERVAL_SECONDS}s (INGESTION_INTERVAL_SECONDS)")
+    print(f"[STARTUP] Ingestion Schedulers started: Discovery={_DISCOVERY_INTERVAL}s, Queue={_INGESTION_INTERVAL}s")
 
-    # 3. Chạy nạp thử nghiệm ban đầu (Warmup)
-    try:
-        print("[STARTUP WARMUP] Triggering initial data ingestion...")
-        service.scheduled_run()
-    except Exception as e:
-        print(f"[STARTUP WARMUP ERROR] {e}")
+    # 3. Chạy Discovery & nạp thử nghiệm ban đầu (Warmup) trong background thread để không chặn startup
+    import threading
+    def initial_warmup():
+        try:
+            print("[STARTUP WARMUP] Chạy Discovery lần đầu khi khởi động...")
+            scheduled_discovery_job()
+            print("[STARTUP WARMUP] Xử lý granule đầu tiên trong hàng đợi...")
+            scheduled_queue_job()
+        except Exception as e:
+            print(f"[STARTUP WARMUP ERROR] {e}")
+
+    threading.Thread(target=initial_warmup, daemon=True).start()
 
 
 @app.on_event("shutdown")
@@ -69,15 +97,18 @@ def stop_scheduler():
     scheduler.shutdown()
 
 
-# ── REST Endpoints (Trigger & Kiểm tra thủ công) ───────────────────────────────
-
-class IngestRequest(BaseModel):
-    source_type: str = "url"  # "url" | "mock"
-    file_url: Optional[str] = None
-    filename: Optional[str] = None
+# ── REST Endpoints ────────────────────────────────────────────────────────────
 
 class IngestUrlRequest(BaseModel):
     file_url: Optional[str] = None
+
+class IngestMockRequest(BaseModel):
+    target_date: Optional[str] = None
+    filename: Optional[str] = None
+
+class DiscoveryRequest(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 @app.get("/health")
@@ -87,43 +118,71 @@ def health():
         "service": "data-ingestion",
         "timestamp": datetime.utcnow().isoformat(),
         "scheduler_running": scheduler.running,
-        "default_target_url": DEFAULT_DATA_URL,
-        "supported_fields": [
-            "ColumnAmountO3", "Latitude", "Longitude", "SecondsInDay",
-            "QualityFlags", "GroundPixelQualityFlags", "SolarZenithAngle",
-            "RadiativeCloudFraction", "CloudPressure", "WaterFraction"
-        ]
+        "region": {
+            "lat_min": service.lat_min,
+            "lat_max": service.lat_max,
+            "lon_min": service.lon_min,
+            "lon_max": service.lon_max,
+        },
+        "discovery_settings": {
+            "interval_seconds": _DISCOVERY_INTERVAL,
+            "start_date": service.discovery_start_date
+        }
     }
+
+
+@app.post("/api/discovery/trigger")
+def trigger_discovery(req: Optional[DiscoveryRequest] = None):
+    """Kích hoạt thủ công job quét file OMTO3G từ NASA."""
+    start_d = req.start_date if req and req.start_date else None
+    end_d = req.end_date if req and req.end_date else None
+    new_count = service.run_discovery(start_date=start_d, end_date=end_d)
+    return {"status": "ok", "new_granules_discovered": new_count}
+
+
+@app.post("/api/ingest/queue/process")
+def trigger_queue_process():
+    """Kích hoạt thủ công xử lý các granule pending trong hàng đợi."""
+    processed = service.process_pending_queue(batch_size=5)
+    return {"status": "ok", "processed_count": processed}
 
 
 @app.post("/api/ingest/url")
 def ingest_from_custom_url(req: IngestUrlRequest):
-    """Nạp và trích xuất dữ liệu trực tiếp từ URL file HDF5/HE5 do người dùng cung cấp."""
-    target_url = req.file_url or DEFAULT_DATA_URL
-    result = service.ingest_from_url(target_url)
-    if not result or "error" in result:
-        detail_msg = result.get("error") if result else f"Không thể tải hoặc đọc file từ {target_url}"
-        raise HTTPException(status_code=502, detail=detail_msg)
-    return {"status": "success", "mode": "custom_url", "result": result}
+    """Nạp trực tiếp từ 1 URL cụ thể do người dùng chỉ định."""
+    res = service.ingest_from_url(req.file_url)
+    if not res:
+        raise HTTPException(status_code=400, detail="Không thể tải hoặc xử lý file từ URL đã cung cấp")
+    return res
 
 
 @app.post("/api/ingest/mock")
-def ingest_mock_direct(filename: Optional[str] = None):
-    """Tạo granule giả lập có đủ 10 trường và ghi trực tiếp vào PostgreSQL."""
-    result = service.ingest_mock(filename)
-    return {"status": "success", "mode": "mock", "result": result}
+def ingest_mock_granule(req: Optional[IngestMockRequest] = None):
+    """Tạo và nạp file giả lập L2G chuẩn vùng Bán đảo Nam Cực theo ngày chỉ định."""
+    t_date = req.target_date if req else None
+    f_name = req.filename if req else None
+    res = service.ingest_mock(target_date=t_date, filename=f_name)
+    return res
 
 
-@app.post("/api/ingest")
-def trigger_ingest(req: IngestRequest, background_tasks: BackgroundTasks):
-    """Kích hoạt nạp dữ liệu thủ công."""
-    if req.source_type == "url":
-        target = req.file_url or DEFAULT_DATA_URL
-        result = service.ingest_from_url(target)
-        if not result or "error" in result:
-            result = service.ingest_mock(req.filename)
-            return {"status": "success", "mode": "fallback_mock", "result": result}
-        return {"status": "success", "mode": "url", "result": result}
-    else:
-        result = service.ingest_mock(req.filename)
-        return {"status": "success", "mode": "mock", "result": result}
+@app.get("/api/granules/status")
+def get_granules_status():
+    """Lấy thống kê trạng thái của các granule trong hệ thống."""
+    with db_client.get_engine().connect() as conn:
+        from sqlalchemy import text
+        res = conn.execute(text("""
+            SELECT status, count(*) as count 
+            FROM ingested_granules 
+            GROUP BY status;
+        """)).fetchall()
+        daily_res = conn.execute(text("""
+            SELECT observation_date, avg_ozone, min_ozone, max_ozone, valid_observations, granules_count
+            FROM ozone_daily
+            ORDER BY observation_date DESC
+            LIMIT 10;
+        """)).fetchall()
+
+    return {
+        "granule_statuses": {r._mapping["status"]: r._mapping["count"] for r in res},
+        "recent_daily_summary": [dict(r._mapping) for r in daily_res]
+    }

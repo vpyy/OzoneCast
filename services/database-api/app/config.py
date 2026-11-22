@@ -13,4 +13,4 @@ if CORS_ORIGINS_RAW == "*" or not CORS_ORIGINS_RAW:
 else:
     CORS_ORIGINS = [orig.strip() for orig in CORS_ORIGINS_RAW.split(",") if orig.strip()]
 
-WS_POLL_INTERVAL_SECONDS = int(os.getenv("WS_POLL_INTERVAL_SECONDS", "30"))
+WS_POLL_INTERVAL_SECONDS = int(os.getenv("WS_POLL_INTERVAL_SECONDS", "5"))

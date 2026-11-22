@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/grid-summary", tags=["Grid Summary"])
 @router.get("", response_model=List[GridSummaryResponse])
 def get_grid_summary(
     db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=5000)] = 500,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 500,
     offset: Annotated[int, Query(ge=0)] = 0,
     source_filename: Annotated[Optional[str], Query()] = None,
     min_lat: Annotated[Optional[float], Query(ge=-90.0, le=90.0)] = None,
@@ -35,7 +35,7 @@ def get_grid_summary(
         SELECT 
             row_number() OVER () AS id,
             'Dynamic_SQL_Binning' AS source_filename,
-            NOW() AS timestamp,
+            COALESCE(MAX(created_at), NOW()) AS timestamp,
             round((latitude / 0.5)::numeric) * 0.5 AS lat_bin,
             round((longitude / 0.5)::numeric) * 0.5 AS lon_bin,
             round(avg(ozone_column_raw)::numeric, 1) AS ozone_column_mean,

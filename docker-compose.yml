@@ -48,6 +48,7 @@ services:
       - ./services/database-api/.env.example   # rename to .env in production
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+      WS_POLL_INTERVAL_SECONDS: ${WS_POLL_INTERVAL_SECONDS:-5}
     ports:
       - "8000:8000"
     depends_on:
@@ -71,6 +72,14 @@ services:
       NASA_USERNAME:               ${NASA_USERNAME:-}
       NASA_PASSWORD:               ${NASA_PASSWORD:-}
       INGESTION_INTERVAL_SECONDS:  ${INGESTION_INTERVAL_SECONDS:-300}
+      REGION_LAT_MIN:              ${REGION_LAT_MIN:--70}
+      REGION_LAT_MAX:              ${REGION_LAT_MAX:--63}
+      REGION_LON_MIN:              ${REGION_LON_MIN:--75}
+      REGION_LON_MAX:              ${REGION_LON_MAX:--55}
+      DISCOVERY_INTERVAL_SECONDS:  ${DISCOVERY_INTERVAL_SECONDS:-7200}
+      DISCOVERY_START_DATE:        ${DISCOVERY_START_DATE:-2026-11-16}
+    volumes:
+      - ./services/data-ingestion/seed:/app/seed
     ports:
       - "8002:8002"
     depends_on:

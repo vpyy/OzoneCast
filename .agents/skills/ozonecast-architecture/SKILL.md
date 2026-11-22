@@ -16,7 +16,7 @@ PostgreSQL -> database-api (FastAPI, chỉ đọc, WebSocket stream /ws/stream &
 1. Mỗi service là một container độc lập, giao tiếp CHỈ qua PostgreSQL. Không gọi HTTP chéo giữa service.
 2. Chỉ data-ingestion và backend-services được ghi DB. database-api chỉ SELECT (chỉ đọc). database-api được dùng thêm WebSocket (/ws/stream) để đẩy cập nhật trực tiếp tới frontend thay cho việc chỉ polling thuần túy.
 3. Cấu hình qua biến môi trường. Không hardcode secret. Trong container, host DB là "postgres".
-4. Dữ liệu: vùng Bán đảo Nam Cực (lat -70..-63, lon -70..-55), biến chính ColumnAmountO3 (DU).
+4. Dữ liệu: nguồn vệ tinh OMI/Aura OMTO3G (L2G Gridded), vùng Bán đảo Nam Cực (lat -70..-63, lon -75..-55), biến chính ColumnAmountO3 (DU). Lọc cắt vùng theo chỉ số ô lưới, giữ từng quan sát hợp lệ (nhiều lớp quan sát trong 1 ô lưới).
 5. Giá trị thiếu (fill value ~ -1.27e30, đêm cực) phải đổi thành NaN/NULL, không bao giờ thay bằng 0.
 6. Ghi DB phải idempotent (UPSERT theo granule + tọa độ + thời điểm), tránh trùng khi chạy lại.
 7. Đổi schema thì sửa db/init/*.sql và báo rõ các service bị ảnh hưởng.

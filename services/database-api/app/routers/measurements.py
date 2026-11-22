@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api", tags=["Raw Measurements & Timeseries"])
 @router.get("/raw-measurements", response_model=List[RawMeasurementResponse])
 def get_raw_measurements(
     db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=10000)] = 100,
+    limit: Annotated[int, Query(ge=1, le=100000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
     granule_name: Annotated[Optional[str], Query()] = None,
     min_lat: Annotated[Optional[float], Query(ge=-90.0, le=90.0)] = None,
@@ -44,7 +44,8 @@ def get_raw_measurements(
             RawMeasurement.ozone_column_raw > 0
         )
 
-    return query.order_by(RawMeasurement.id.asc()).offset(offset).limit(limit).all()
+    # Ưu tiên lấy các bản ghi mới nạp nhất lên đầu để hiển thị real-time
+    return query.order_by(RawMeasurement.id.desc()).offset(offset).limit(limit).all()
 
 
 @router.get("/aggregated/timeseries", response_model=AggregatedTimeseriesResponse)

@@ -10,6 +10,7 @@ import TrendSeasonalCorrelation from './components/TrendSeasonalCorrelation';
 import TomorrowPredictionCard from './components/TomorrowPredictionCard';
 import { api, API_BASE } from './api/apiClient';
 import { useWebSocket } from './lib/useWebSocket';
+import { REGION } from './config/region';
 import { C, F } from './theme';
 
 export default function App() {
@@ -28,8 +29,14 @@ export default function App() {
       const [statsRes, granulesRes, rawRes, gridRes, clustersRes] = await Promise.allSettled([
         api.getStats(),
         api.getGranules(),
-        api.getRawMeasurements(250),
-        api.getGridSummary(500),
+        api.getRawMeasurements(25000, 0, {
+          min_lat: REGION.latMin,
+          max_lat: REGION.latMax,
+          min_lon: REGION.lonMin,
+          max_lon: REGION.lonMax,
+          valid_only: true
+        }),
+        api.getGridSummary(3000),
         api.getClusters(200),
       ]);
       if (statsRes.status    === 'fulfilled') setStats(statsRes.value);
@@ -59,13 +66,48 @@ export default function App() {
           anomalies_detected:      d.anomalies_detected      ?? prev?.anomalies_detected      ?? 0,
           last_updated:            d.last_updated            || new Date().toISOString(),
         }));
-        if (payload.type === 'update') {
-          api.getRawMeasurements(250).then(setRawData).catch(() => {});
-          api.getGridSummary(500).then(setGridData).catch(() => {});
-          api.getGranules().then(setGranules).catch(() => {});
-        }
+        
+        // Khi nhận được sự kiện update từ WebSocket, ngay lập tức kéo dữ liệu mới nhất
+        api.getRawMeasurements(25000, 0, {
+          min_lat: REGION.latMin,
+          max_lat: REGION.latMax,
+          min_lon: REGION.lonMin,
+          max_lon: REGION.lonMax,
+          valid_only: true
+        }).then(data => {
+          if (Array.isArray(data) && data.length > 0) setRawData(data);
+        }).catch(() => {});
+        api.getGridSummary(3000).then(data => {
+          if (Array.isArray(data) && data.length > 0) setGridData(data);
+        }).catch(() => {});
+        api.getGranules().then(setGranules).catch(() => {});
       }
     }
+  }, []);
+
+  // Polling tự động mỗi 4 giây để đồng bộ real-time liên tục trong lúc script đang nạp file
+  useEffect(() => {
+    const timer = setInterval(() => {
+      api.getRawMeasurements(25000, 0, {
+        min_lat: REGION.latMin,
+        max_lat: REGION.latMax,
+        min_lon: REGION.lonMin,
+        max_lon: REGION.lonMax,
+        valid_only: true
+      }).then(data => {
+        if (Array.isArray(data) && data.length > 0) setRawData(data);
+      }).catch(() => {});
+
+      api.getGridSummary(3000).then(data => {
+        if (Array.isArray(data) && data.length > 0) setGridData(data);
+      }).catch(() => {});
+
+      api.getStats().then(s => {
+        if (s) setStats(s);
+      }).catch(() => {});
+    }, 4000);
+
+    return () => clearInterval(timer);
   }, []);
 
   const { status: wsStatus } = useWebSocket({
@@ -102,7 +144,7 @@ export default function App() {
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[
-                    { key: 'grid', label: `Grid 0.5° (${gridData.length})` },
+                    { key: 'grid', label: `Grid 0.25° (${gridData.length})` },
                     { key: 'raw',  label: `Raw Points (${rawData.length})` },
                   ].map(({ key, label }) => (
                     <button key={key} onClick={() => setMapMode(key)} style={{
@@ -117,7 +159,7 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              <OzoneMap gridData={gridData} rawData={rawData} mode={mapMode} />
+              <OzoneMap gridData={gridData} rawData={rawData} mode={mapMode} loading={loading} onRefresh={loadAllData} />
               <TomorrowPredictionCard />
             </div>
           )}

@@ -56,8 +56,8 @@ Hệ thống sử dụng thư viện `h5py` trích xuất từ file HDF5/HE5 chu
 | Trường trong H5 | Cột CSDL | Kiểu dữ liệu | Mục đích sử dụng |
 |---|---|---|---|
 | **ColumnAmountO3** | `ozone_column_raw` | Float (DU) | **Biến chính** cần phân tích và dự đoán (Dobson Units). |
-| **Latitude** | `latitude` | Float (deg) | **Cắt vùng Bán đảo Nam Cực** (`[-90°, -55°]`), vẽ bản đồ không gian. |
-| **Longitude** | `longitude` | Float (deg) | Tọa độ kinh độ địa lý (`[-180°, 180°]`). |
+| **Latitude** | `latitude` | Float (deg) | **Cắt vùng Bán đảo Nam Cực** (`[-70°, -63°]`), vẽ bản đồ không gian. |
+| **Longitude** | `longitude` | Float (deg) | Tọa độ kinh độ địa lý Bán đảo Nam Cực (`[-75°, -55°]`). |
 | **SecondsInDay** / **Time** | `seconds_in_day` / `time_raw` | Float (giây) | **Xác định thời điểm đo**: Số giây từ 00:00 UTC của ngày (dễ dùng vì chỉ cần cộng với ngày trong tên file). |
 | **QualityFlags** | `quality_flag` | Integer | **Lọc bỏ các điểm đo xấu** do lỗi thuật toán OMI. |
 | **GroundPixelQualityFlags** | `ground_pixel_quality_flag` | Integer | **Lọc thêm theo chất lượng pixel mặt đất** (mây che khuất, băng tuyết bề mặt). |
