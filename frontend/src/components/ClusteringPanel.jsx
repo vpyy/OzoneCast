@@ -44,7 +44,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Layers size={14} strokeWidth={1.75} style={{ color: C.purple }} />
             <div>
-              <p style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: 0 }}>Spatial Clustering</p>
+              <p style={{ fontFamily: F.heading, fontSize: 13, fontWeight: 700, color: C.textPrimary, margin: 0 }}>Spatial Clustering</p>
               <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
                 Variables: Lat · Lon · Ozone DU · Reflectivity 331
               </p>
@@ -77,7 +77,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '8px 14px', borderRadius: 4, border: 'none',
                 cursor: running ? 'not-allowed' : 'pointer',
-                fontFamily: F.sans, fontSize: 12, fontWeight: 600,
+                fontFamily: F.heading, fontSize: 12, fontWeight: 700,
                 background: running ? C.surfaceAlt : C.purple, color: running ? C.textMuted : '#fff',
                 opacity: running ? 0.7 : 1,
               }}>
@@ -90,7 +90,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
         {result && (
           <div style={{ marginTop: 10, padding: '8px 12px', background: `${C.purple}0C`, border: `1px solid ${C.purple}33`, borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle2 size={12} strokeWidth={1.75} style={{ color: C.purple }} />
-            <span style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond }}>
+            <span style={{ fontFamily: F.opensans, fontSize: 11, color: C.textSecond }}>
               {result.cluster_count} clusters · {result.total_points_clustered} points processed
             </span>
           </div>

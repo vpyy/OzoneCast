@@ -6,6 +6,13 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"Open Sans"', 'Roboto', 'system-ui', '-apple-system', 'sans-serif'],
+        heading: ['Roboto', '"Open Sans"', 'sans-serif'],
+        roboto: ['Roboto', 'sans-serif'],
+        opensans: ['"Open Sans"', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
+      },
       colors: {
         brand: {
           50: '#f0f9ff',

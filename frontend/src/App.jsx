@@ -97,7 +97,7 @@ export default function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Map mode bar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 4 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: F.sans }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: F.heading }}>
                   Map Layer
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -107,7 +107,7 @@ export default function App() {
                   ].map(({ key, label }) => (
                     <button key={key} onClick={() => setMapMode(key)} style={{
                       padding: '5px 12px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                      fontFamily: F.sans, cursor: 'pointer', transition: 'all 0.15s',
+                      fontFamily: F.heading, cursor: 'pointer', transition: 'all 0.15s',
                       background: mapMode === key ? C.accent : C.surfaceAlt,
                       color:      mapMode === key ? '#fff'    : C.textSecond,
                       border:     `1px solid ${mapMode === key ? C.accent : C.border}`,
@@ -138,7 +138,7 @@ export default function App() {
 
         <footer style={{
           textAlign: 'center', fontSize: 11, padding: '12px 0',
-          borderTop: `1px solid ${C.border}`, color: C.textMuted, fontFamily: F.mono,
+          borderTop: `1px solid ${C.border}`, color: C.textMuted, fontFamily: F.opensans,
         }}>
           NASA Aura/OMI Ozone Monitoring System &nbsp;·&nbsp; Microservices Architecture &nbsp;·&nbsp; 2026
         </footer>

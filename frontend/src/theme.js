@@ -1,6 +1,6 @@
 /**
  * Light-mode design tokens — dùng chung cho tất cả components.
- * Text thường: Inter  |  Số/code: JetBrains Mono
+ * Headings/Display: Roboto  |  Body text/UI: Open Sans  |  Số/code: JetBrains Mono
  */
 
 export const C = {
@@ -30,7 +30,10 @@ export const C = {
 };
 
 export const F = {
-  sans: "'Inter', system-ui, sans-serif",
+  sans: "'Open Sans', 'Roboto', system-ui, -apple-system, sans-serif",
+  heading: "'Roboto', 'Open Sans', system-ui, sans-serif",
+  roboto: "'Roboto', sans-serif",
+  opensans: "'Open Sans', sans-serif",
   mono: "'JetBrains Mono', 'Fira Code', monospace",
 };
 
@@ -43,9 +46,9 @@ export const panelStyle = {
 };
 
 export const labelStyle = {
-  fontFamily: F.sans,
+  fontFamily: F.heading,
   fontSize: 10,
-  fontWeight: 600,
+  fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: '0.07em',
   color: C.textMuted,
@@ -64,14 +67,14 @@ export const inputStyle = {
   padding: '6px 10px',
   color: C.textPrimary,
   fontSize: 12,
-  fontFamily: F.mono,
+  fontFamily: F.sans,
   outline: 'none',
 };
 
 export const inputLabelStyle = {
-  fontFamily: F.sans,
+  fontFamily: F.heading,
   fontSize: 11,
-  fontWeight: 500,
+  fontWeight: 600,
   color: C.textSecond,
   marginBottom: 4,
   display: 'block',
@@ -80,11 +83,11 @@ export const inputLabelStyle = {
 export const thStyle = {
   padding: '7px 10px',
   fontSize: 10,
-  fontWeight: 600,
+  fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: '0.07em',
   color: C.textMuted,
-  fontFamily: F.sans,
+  fontFamily: F.heading,
   textAlign: 'left',
   background: C.surfaceAlt,
   borderBottom: `1px solid ${C.border}`,
@@ -94,7 +97,7 @@ export const thStyle = {
 export const tdStyle = {
   padding: '6px 10px',
   fontSize: 11,
-  fontFamily: F.mono,
+  fontFamily: F.sans,
   color: C.textSecond,
   borderBottom: `1px solid ${C.border}`,
 };
@@ -109,8 +112,8 @@ export const btnPrimary = {
   border: 'none',
   cursor: 'pointer',
   fontSize: 12,
-  fontWeight: 600,
-  fontFamily: F.sans,
+  fontWeight: 700,
+  fontFamily: F.heading,
   background: C.accent,
   color: '#fff',
   transition: 'background 0.15s',
@@ -127,7 +130,7 @@ export const btnSecondary = {
   cursor: 'pointer',
   fontSize: 12,
   fontWeight: 600,
-  fontFamily: F.sans,
+  fontFamily: F.heading,
   background: C.surface,
   color: C.textSecond,
   transition: 'background 0.15s',

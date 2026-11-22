@@ -62,7 +62,7 @@ export default function PredictionPanel() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <BrainCircuit size={15} strokeWidth={1.75} style={{ color: C.accent }} />
           <div>
-            <p style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: 0 }}>
+            <p style={{ fontFamily: F.heading, fontSize: 13, fontWeight: 700, color: C.textPrimary, margin: 0 }}>
               Ozone Forecast &amp; UV Risk Assessment
             </p>
             <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
@@ -81,7 +81,7 @@ export default function PredictionPanel() {
       {trainResult && (
         <div style={{ ...panelStyle, padding: '10px 14px', border: `1px solid ${C.success}44`, background: `${C.success}08`, display: 'flex', alignItems: 'center', gap: 8 }}>
           <CheckCircle size={13} strokeWidth={1.75} style={{ color: C.success, flexShrink: 0 }} />
-          <span style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond }}>Model retrained — </span>
+          <span style={{ fontFamily: F.opensans, fontSize: 11, color: C.textSecond }}>Model retrained — </span>
           <span style={{ ...monoStyle, fontSize: 11, color: C.textMuted }}>
             MAE: {trainResult.mae_du} DU &nbsp;·&nbsp; R²: {trainResult.r2_score}
             {trainResult.classification_accuracy && ` · Acc: ${trainResult.classification_accuracy}%`}
@@ -180,10 +180,10 @@ export default function PredictionPanel() {
               <div style={{ background: C.surfaceAlt, border: `1px solid ${accent}44`, borderRadius: 4, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <StatusIcon color={prediction.badge_color} size={14} />
                 <div>
-                  <p style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, color: accent, margin: 0 }}>
+                  <p style={{ fontFamily: F.heading, fontSize: 12, fontWeight: 700, color: accent, margin: 0 }}>
                     {prediction.status_label}
                   </p>
-                  <p style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond, marginTop: 4, lineHeight: 1.5 }}>
+                  <p style={{ fontFamily: F.opensans, fontSize: 11, color: C.textSecond, marginTop: 4, lineHeight: 1.5 }}>
                     {prediction.health_advisory}
                   </p>
                 </div>
@@ -199,9 +199,9 @@ export default function PredictionPanel() {
                     ['Reflectivity',       prediction.input_features?.reflectivity ? `${prediction.input_features.reflectivity.toFixed(1)}%` : '—'],
                     ['Solar Zenith Angle', prediction.input_features?.solar_zenith_angle ? `${prediction.input_features.solar_zenith_angle.toFixed(1)}°` : '—'],
                   ].map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: F.mono, fontSize: 10, padding: '2px 0' }}>
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: F.opensans, fontSize: 10, padding: '2px 0' }}>
                       <span style={{ color: C.textMuted }}>{k}</span>
-                      <span style={{ color: C.textSecond }}>{v}</span>
+                      <span style={{ color: C.textSecond, fontFamily: F.mono }}>{v}</span>
                     </div>
                   ))}
                 </div>
@@ -210,7 +210,7 @@ export default function PredictionPanel() {
           ) : (
             <div style={{ textAlign: 'center', color: C.textDisabled }}>
               <BrainCircuit size={28} strokeWidth={1} style={{ margin: '0 auto 8px' }} />
-              <p style={{ fontFamily: F.sans, fontSize: 11, color: C.textMuted }}>Configure coordinates and run prediction</p>
+              <p style={{ fontFamily: F.opensans, fontSize: 11, color: C.textMuted }}>Configure coordinates and run prediction</p>
             </div>
           )}
         </div>

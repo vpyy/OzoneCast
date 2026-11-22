@@ -62,7 +62,7 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Filter size={12} strokeWidth={1.75} style={{ color: C.textMuted }} />
             <select value={filterGranule} onChange={e => setFilterGranule(e.target.value)}
-              style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', color: C.textSecond, fontSize: 11, fontFamily: F.mono, outline: 'none' }}>
+              style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', color: C.textSecond, fontSize: 11, fontFamily: F.opensans, outline: 'none' }}>
               <option value="">All Granules ({granules.length})</option>
               {granules.map(g => <option key={g.id} value={g.filename}>{g.filename}</option>)}
             </select>
@@ -77,7 +77,7 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
             ? <CheckCircle2 size={12} strokeWidth={1.75} style={{ color: C.success, flexShrink: 0 }} />
             : <XCircle      size={12} strokeWidth={1.75} style={{ color: C.danger,  flexShrink: 0 }} />
           }
-          <span style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond }}>{message.text}</span>
+          <span style={{ fontFamily: F.opensans, fontSize: 11, color: C.textSecond }}>{message.text}</span>
         </div>
       )}
 
@@ -88,7 +88,7 @@ export default function RawDataTable({ rawData = [], granules = [], onDataMutate
             <Database size={13} strokeWidth={1.75} style={{ color: C.accent }} />
             <p style={{ ...labelStyle, margin: 0 }}>Raw Measurements — 10 NASA Fields</p>
           </div>
-          <span style={{ ...monoStyle, fontSize: 10, color: C.textMuted }}>{filtered.length} records</span>
+          <span style={{ fontFamily: F.opensans, fontSize: 10, color: C.textMuted }}>{filtered.length} records</span>
         </div>
 
         <div style={{ overflowX: 'auto', maxHeight: 480 }}>

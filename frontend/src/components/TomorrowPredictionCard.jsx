@@ -18,7 +18,7 @@ function StatusBadge({ label }) {
       padding: '2px 9px', borderRadius: 4,
       border: `1px solid ${color}44`,
       background: `${color}12`,
-      color, fontSize: 11, fontWeight: 600, fontFamily: F.mono,
+      color, fontSize: 11, fontWeight: 700, fontFamily: F.heading,
     }}>
       {label || 'Bình thường'}
     </span>
@@ -63,22 +63,22 @@ export default function TomorrowPredictionCard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={labelStyle}>Regression Model</p>
-              <p style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: '4px 0 0' }}>
+              <p style={{ fontFamily: F.heading, fontSize: 13, fontWeight: 700, color: C.textPrimary, margin: '4px 0 0' }}>
                 Ozone Column — Tomorrow
               </p>
-              <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+              <p style={{ fontFamily: F.opensans, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
                 {forecast?.target_date || 'Tomorrow'}
               </p>
             </div>
             <Activity size={15} strokeWidth={1.75} style={{ color: C.accent, marginTop: 2 }} />
           </div>
           <div style={divider}>
-            <span style={{ ...monoStyle, fontSize: 32, fontWeight: 700, color: C.textPrimary }}>
+            <span style={{ fontFamily: F.heading, fontSize: 32, fontWeight: 700, color: C.textPrimary }}>
               {forecast?.predicted_ozone_du ?? 292.4}
             </span>
-            <span style={{ ...monoStyle, fontSize: 12, color: C.textMuted, marginLeft: 6 }}>DU</span>
+            <span style={{ fontFamily: F.opensans, fontSize: 12, fontWeight: 600, color: C.textMuted, marginLeft: 6 }}>DU</span>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: F.mono, color: C.textMuted }}>
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: F.opensans, color: C.textMuted }}>
             <span>Random Forest Regressor</span>
             <span>MAE ±{forecast?.mae_du ?? '4.69'} DU</span>
           </div>
@@ -89,10 +89,10 @@ export default function TomorrowPredictionCard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={labelStyle}>Classification Model</p>
-              <p style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: C.textPrimary, margin: '4px 0 0' }}>
+              <p style={{ fontFamily: F.heading, fontSize: 13, fontWeight: 700, color: C.textPrimary, margin: '4px 0 0' }}>
                 Status Label — Tomorrow
               </p>
-              <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>UV radiation risk assessment</p>
+              <p style={{ fontFamily: F.opensans, fontSize: 10, color: C.textMuted, marginTop: 2 }}>UV radiation risk assessment</p>
             </div>
             <button onClick={loadForecast} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 0 }}>
               <RefreshCw size={13} strokeWidth={1.75} className={loading ? 'animate-spin' : ''} />
@@ -100,11 +100,11 @@ export default function TomorrowPredictionCard() {
           </div>
           <div style={divider}>
             <StatusBadge label={forecast?.status_label} />
-            <p style={{ fontFamily: F.sans, fontSize: 11, color: C.textSecond, marginTop: 8, lineHeight: 1.5 }}>
+            <p style={{ fontFamily: F.opensans, fontSize: 11, color: C.textSecond, marginTop: 8, lineHeight: 1.5 }}>
               {forecast?.health_advisory ?? 'Ozone column within safe range.'}
             </p>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: F.mono, color: C.textMuted }}>
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: F.opensans, color: C.textMuted }}>
             <span>Random Forest Classifier</span>
             <span>Conf. {forecast?.confidence_percent ?? 96.5}%</span>
           </div>
@@ -122,7 +122,7 @@ export default function TomorrowPredictionCard() {
             {forecast.regional_forecasts.map((rf, i) => (
               <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, color: C.textPrimary }}>{rf.location_name}</span>
+                  <span style={{ fontFamily: F.heading, fontSize: 11, fontWeight: 700, color: C.textPrimary }}>{rf.location_name}</span>
                   <StatusBadge label={rf.status_label?.split('(')[0]?.trim()} />
                 </div>
                 <p style={{ ...monoStyle, fontSize: 20, fontWeight: 700, color: C.textPrimary, margin: '4px 0 0' }}>

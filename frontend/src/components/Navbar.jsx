@@ -19,7 +19,7 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, ws
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '5px 9px', marginTop: 6, borderRadius: 4,
     border: `1px solid ${C.border}`, background: C.surfaceAlt,
-    fontSize: 10, fontFamily: F.mono, color: C.textMuted,
+    fontSize: 10, fontFamily: F.opensans, color: C.textMuted,
   };
 
   return (
@@ -32,7 +32,7 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, ws
 
       {/* Brand */}
       <div style={{ padding: '16px 14px 12px', borderBottom: `1px solid ${C.border}` }}>
-        <p style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: C.textPrimary, margin: 0, letterSpacing: '-0.02em' }}>
+        <p style={{ fontFamily: F.heading, fontSize: 14, fontWeight: 700, color: C.textPrimary, margin: 0, letterSpacing: '-0.02em' }}>
           NASA Ozone System
         </p>
         <p style={{ fontFamily: F.mono, fontSize: 10, color: C.textMuted, letterSpacing: '0.08em', marginTop: 2 }}>
@@ -60,7 +60,7 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, ws
 
       {/* Nav items */}
       <nav style={{ flex: 1, padding: '8px 8px', overflowY: 'auto' }}>
-        <div style={{ fontFamily: F.mono, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textDisabled, padding: '4px 8px 8px' }}>
+        <div style={{ fontFamily: F.heading, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.textDisabled, padding: '4px 8px 8px' }}>
           Navigation
         </div>
 
@@ -77,16 +77,17 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, ws
                 transition: 'background 0.12s',
                 background: active ? C.accent : 'transparent',
                 color: active ? '#fff' : C.textSecond,
+                fontFamily: F.heading,
               }}
               onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.surfaceAlt; }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
               <Icon size={15} strokeWidth={1.75} style={{ flexShrink: 0, color: active ? '#fff' : C.textMuted }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: active ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: F.heading, fontSize: 12, fontWeight: active ? 700 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {label}
                 </div>
-                <div style={{ fontFamily: F.mono, fontSize: 10, color: active ? 'rgba(255,255,255,0.65)' : C.textMuted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontFamily: F.opensans, fontSize: 10, color: active ? 'rgba(255,255,255,0.85)' : C.textMuted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {desc}
                 </div>
               </div>
@@ -104,14 +105,14 @@ export default function Navbar({ activeTab, setActiveTab, onRefresh, loading, ws
             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '7px 0', borderRadius: 4, border: `1px solid ${C.border}`,
             background: C.surface, color: loading ? C.textDisabled : C.textSecond,
-            fontSize: 11, fontWeight: 600, fontFamily: F.sans,
+            fontSize: 11, fontWeight: 700, fontFamily: F.heading,
             cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
           <RefreshCw size={12} strokeWidth={1.75} className={loading ? 'animate-spin' : ''} />
           {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>
-        <p style={{ fontFamily: F.mono, fontSize: 10, color: C.textDisabled, textAlign: 'center', marginTop: 8 }}>
+        <p style={{ fontFamily: F.opensans, fontSize: 10, color: C.textDisabled, textAlign: 'center', marginTop: 8 }}>
           Aura/OMI · v2.0 · Docker Compose
         </p>
       </div>
