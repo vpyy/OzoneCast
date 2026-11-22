@@ -80,13 +80,17 @@ def job_analysis():
 
 
 def job_prediction():
-    """Prediction: retrain RandomForest → forecast tomorrow → cache vào DB."""
+    """Prediction: forecast tomorrow → cache vào DB (dùng AI model đã build sẵn, không train lại)."""
     print(f"[PREDICTION] triggered at {datetime.utcnow().isoformat()}")
     try:
-        metrics = prediction_model.train_from_database()
-        print(f"[PREDICTION] done: MAE={metrics.get('regression_mae_du')} DU, "
-              f"R²={metrics.get('regression_r2')}, "
-              f"Acc={metrics.get('classification_accuracy')}%")
+        if not (prediction_model.reg_model.is_trained and prediction_model.clf_model.is_trained):
+            metrics = prediction_model.train_from_database()
+            print(f"[PREDICTION] auto-trained: MAE={metrics.get('regression_mae_du')} DU, "
+                  f"R²={metrics.get('regression_r2')}, "
+                  f"Acc={metrics.get('classification_accuracy')}%")
+        else:
+            result = prediction_model.forecast_tomorrow_and_cache()
+            print(f"[PREDICTION] done (pre-built models loaded): cached target_date={result.get('target_date')}")
     except Exception as e:
         print(f"[PREDICTION ERROR] {e}")
 
@@ -161,6 +165,19 @@ def trigger_analysis(payload: Optional[Dict[str, Any]] = None):
     """Trigger manual data analysis."""
     granule = payload.get("granule_name") if payload else None
     return OzoneAnalyzer.process_granule(granule_name=granule)
+
+
+@app.post("/api/prediction/run")
+def trigger_prediction_run():
+    """
+    Kích hoạt dự báo ngày mai sử dụng mô hình AI ĐÃ BUILD SẴN (KHÔNG TRAIN LẠI).
+    Ghi dữ liệu dự báo trực tiếp vào cache Database API.
+    """
+    try:
+        return prediction_model.forecast_tomorrow_and_cache()
+    except Exception as e:
+        print(f"[API PREDICTION RUN ERROR] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/prediction/train")

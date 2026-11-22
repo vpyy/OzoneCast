@@ -4,18 +4,18 @@ import { api } from '../api/apiClient';
 import { C, F, panelStyle, labelStyle, monoStyle, inputStyle, inputLabelStyle, thStyle, tdStyle } from '../theme';
 
 function clusterAccent(char = '') {
-  if (char.includes('băng') || char.includes('mây'))           return '#06B6D4';
-  if (char.includes('suy giảm') || char.includes('thủng'))    return C.danger;
-  if (char.includes('nhiệt đới') || char.includes('xích'))    return C.warning;
+  if (char.includes('băng') || char.includes('mây')) return '#06B6D4';
+  if (char.includes('suy giảm') || char.includes('thủng')) return C.danger;
+  if (char.includes('nhiệt đới') || char.includes('xích')) return C.warning;
   return C.success;
 }
 
 export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
   const [algorithm, setAlgorithm] = useState('KMeans');
   const [nClusters, setNClusters] = useState(4);
-  const [eps, setEps]             = useState(1.2);
-  const [running, setRunning]     = useState(false);
-  const [result, setResult]       = useState(null);
+  const [eps, setEps] = useState(1.2);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
 
   const handleRun = async () => {
     setRunning(true);
@@ -31,7 +31,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
   clusters.forEach(c => {
     if (!groups[c.cluster_id]) groups[c.cluster_id] = { id: c.cluster_id, tag: c.tag, characteristic: c.characteristic, count: 0, sumO3: 0, sumRefl: 0 };
     groups[c.cluster_id].count++;
-    groups[c.cluster_id].sumO3   += c.mean_ozone || 0;
+    groups[c.cluster_id].sumO3 += c.mean_ozone || 0;
     groups[c.cluster_id].sumRefl += c.mean_reflectivity || 20;
   });
 
@@ -102,8 +102,8 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
           {Object.values(groups).map((g, i) => {
             const acc = clusterAccent(g.characteristic || g.tag || '');
-            const avgO3  = g.count > 0 ? (g.sumO3   / g.count).toFixed(1) : '—';
-            const avgR   = g.count > 0 ? (g.sumRefl / g.count).toFixed(1) : '—';
+            const avgO3 = g.count > 0 ? (g.sumO3 / g.count).toFixed(1) : '—';
+            const avgR = g.count > 0 ? (g.sumRefl / g.count).toFixed(1) : '—';
             return (
               <div key={i} style={{ ...panelStyle, borderLeft: `3px solid ${acc}`, padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -135,7 +135,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
         <div style={{ overflowX: 'auto', maxHeight: 320 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>{['Cluster','Latitude','Longitude','Ozone DU','Reflectivity','Characteristic'].map(h => (
+              <tr>{['Cluster', 'Latitude', 'Longitude', 'Ozone DU', 'Reflectivity', 'Characteristic'].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}</tr>
             </thead>

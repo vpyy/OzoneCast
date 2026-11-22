@@ -96,7 +96,8 @@ services:
     ports:
       - "8004:8004"
     volumes:
-      - backend_models:/app/models   # persist trained .pkl files
+      - ./services/backend-services/models:/app/models   # Mount pre-built models directly from repository
+      - backend_models:/app/models_backup
     depends_on:
       postgres:
         condition: service_healthy

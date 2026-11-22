@@ -32,10 +32,9 @@ data/
 .urs_cookies
 /tmp/
 
-# ML Model weights (persist via Docker volume, không cần trong git)
+# ML Model weights (Pre-trained production models tracked in git for offline/demo readiness)
 *.pkl
-services/prediction/models/*.pkl
-services/backend-services/models/*.pkl
+!services/backend-services/models/*.pkl
 
 # IDE & OS
 .vscode/

@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Thư mục lưu model .pkl (persist qua restart nếu mount volume)
 RUN mkdir -p /app/models
+COPY models/ ./models/
 
 COPY app/ ./app/
 

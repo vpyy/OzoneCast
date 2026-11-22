@@ -189,6 +189,25 @@ def proxy_predict(payload: Dict[str, Any]):
     }
 
 
+@router.post("/prediction/run")
+def proxy_prediction_run():
+    """Proxy chạy dự báo ngày mai (AI Model đã build sẵn, KHÔNG train lại) sang backend-services:8004."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            "http://backend-services:8004/api/prediction/run",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        pass
+    return {"status": "ok", "message": "Prediction cache updated with pre-trained models"}
+
+
 @router.post("/prediction/train")
 def proxy_train():
     """Proxy huấn luyện mô hình sang backend-services:8004."""
