@@ -37,7 +37,7 @@ export default function App() {
           valid_only: true
         }),
         api.getGridSummary(3000),
-        api.getClusters(200),
+        api.getClusters(1000),
       ]);
       if (statsRes.status    === 'fulfilled') setStats(statsRes.value);
       if (granulesRes.status === 'fulfilled') setGranules(granulesRes.value);
@@ -80,12 +80,15 @@ export default function App() {
         api.getGridSummary(3000).then(data => {
           if (Array.isArray(data) && data.length > 0) setGridData(data);
         }).catch(() => {});
+        api.getClusters(1000).then(data => {
+          if (Array.isArray(data) && data.length > 0) setClusters(data);
+        }).catch(() => {});
         api.getGranules().then(setGranules).catch(() => {});
       }
     }
   }, []);
 
-  // Polling tự động mỗi 4 giây để đồng bộ real-time liên tục trong lúc script đang nạp file
+  // Polling tự động mỗi 5 giây để đồng bộ real-time liên tục
   useEffect(() => {
     const timer = setInterval(() => {
       api.getRawMeasurements(25000, 0, {
@@ -102,10 +105,14 @@ export default function App() {
         if (Array.isArray(data) && data.length > 0) setGridData(data);
       }).catch(() => {});
 
+      api.getClusters(1000).then(data => {
+        if (Array.isArray(data) && data.length > 0) setClusters(data);
+      }).catch(() => {});
+
       api.getStats().then(s => {
         if (s) setStats(s);
       }).catch(() => {});
-    }, 4000);
+    }, 5000);
 
     return () => clearInterval(timer);
   }, []);

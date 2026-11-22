@@ -70,7 +70,7 @@ class TimeSeriesDecomposer:
             sorted_df = df.copy()
             if "time_dt" not in sorted_df.columns:
                 if "created_at" in sorted_df.columns:
-                    sorted_df["time_dt"] = pd.to_datetime(sorted_df["created_at"], errors="coerce")
+                    sorted_df["time_dt"] = pd.to_datetime(sorted_df["created_at"], utc=True, errors="coerce")
                 else:
                     return []
 

@@ -8,16 +8,19 @@ import logging
 from pathlib import Path
 from typing import List, Dict
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [PREDICTION] %(message)s",
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="[%(asctime)s] [%(levelname)s] [prediction] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("ozonecast.prediction")
 
-# ── API Endpoints ─────────────────────────────────────────────────────────────
+# ── API Endpoints & Intervals ─────────────────────────────────────────────────
 DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
+PREDICTION_INTERVAL_SECONDS = int(os.getenv("PREDICTION_INTERVAL_SECONDS", "300"))
 
 # ── Model Storage Path ────────────────────────────────────────────────────────
 # Sử dụng /app/models trong container Docker hoặc fallback ./models khi chạy local
@@ -64,10 +67,9 @@ RF_REGRESSOR_PARAMS: Dict = {
 
 RF_CLASSIFIER_PARAMS: Dict = {
     "n_estimators": 100,
-    "max_depth": 10,
+    "max_depth": 12,
     "min_samples_split": 3,
     "min_samples_leaf": 2,
-    "class_weight": "balanced",
     "random_state": 42,
     "n_jobs": -1
 }

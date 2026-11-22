@@ -4,7 +4,9 @@
 #    postgres         → Database PostgreSQL 16
 #    database-api     → FastAPI REST API (sole gateway to PostgreSQL) :8000
 #    data-ingestion   → Scheduler: NASA CMR → database-api             :8002
-#    backend-services → Scheduler: Analysis + Clustering + Prediction
+#    data-analysis    → Scheduler: Spatial binning, anomalies, series  (mỗi 5 phút)
+#    prediction       → Scheduler: ML Random Forest forecast & advise  (mỗi 5 phút)
+#    clustering       → Scheduler: K-Means/DBSCAN spatial clustering   (mỗi 1 ngày)
 #    frontend         → React + Vite                                   :3000
 #
 #  Khởi chạy:
@@ -51,6 +53,8 @@ services:
       WS_POLL_INTERVAL_SECONDS: ${WS_POLL_INTERVAL_SECONDS:-5}
     ports:
       - "8000:8000"
+    volumes:
+      - ./services/database-api/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,28 +92,67 @@ services:
     networks:
       - ozonecast-net
 
-  # ── Backend Services (Analysis + Clustering + Prediction) ───────────────────
-  backend-services:
+  # ── Data Analysis (Spatial binning, anomalies, time series — every 5 min) ───
+  data-analysis:
     build:
-      context: ./services/backend-services
+      context: ./services/data-analysis
       dockerfile: Dockerfile
-    container_name: ozone-backend-services
+    container_name: ozone-data-analysis
     restart: unless-stopped
     env_file:
-      - ./services/backend-services/.env.example
+      - ./services/data-analysis/.env.example
     environment:
-      DATABASE_API_URL:              http://database-api:8000
-      ANALYSIS_INTERVAL_SECONDS:     ${ANALYSIS_INTERVAL_SECONDS:-300}
-      PREDICTION_INTERVAL_SECONDS:   ${PREDICTION_INTERVAL_SECONDS:-300}
-      CLUSTERING_INTERVAL_SECONDS:   ${CLUSTERING_INTERVAL_SECONDS:-86400}
-    ports:
-      - "8004:8004"
+      DATABASE_API_URL:          http://database-api:8000
+      ANALYSIS_INTERVAL_SECONDS: ${ANALYSIS_INTERVAL_SECONDS:-300}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      database-api:
+        condition: service_started
+    networks:
+      - ozonecast-net
+
+  # ── Prediction (ML Random Forest forecast & UV advisory — every 5 min) ──────
+  prediction:
+    build:
+      context: ./services/prediction
+      dockerfile: Dockerfile
+    container_name: ozone-prediction
+    restart: unless-stopped
+    env_file:
+      - ./services/prediction/.env.example
+    environment:
+      DATABASE_API_URL:            http://database-api:8000
+      PREDICTION_INTERVAL_SECONDS: ${PREDICTION_INTERVAL_SECONDS:-300}
+      MODEL_DIR:                   /app/models
     volumes:
-      - ./services/backend-services/models:/app/models   # Mount pre-built models directly from repository
+      - ./services/prediction/models:/app/models
       - backend_models:/app/models_backup
     depends_on:
       postgres:
         condition: service_healthy
+      database-api:
+        condition: service_started
+    networks:
+      - ozonecast-net
+
+  # ── Spatial Clustering (K-Means & DBSCAN — every 24h) ───────────────────────
+  clustering:
+    build:
+      context: ./services/clustering
+      dockerfile: Dockerfile
+    container_name: ozone-clustering
+    restart: unless-stopped
+    env_file:
+      - ./services/clustering/.env.example
+    environment:
+      DATABASE_API_URL:            http://database-api:8000
+      CLUSTERING_INTERVAL_SECONDS: ${CLUSTERING_INTERVAL_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      database-api:
+        condition: service_started
     networks:
       - ozonecast-net
 

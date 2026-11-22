@@ -160,8 +160,10 @@ class OzoneClusterer:
                 json={"items": cluster_records[:400]},
                 timeout=15
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 logger.info(f"Persisted {min(len(cluster_records), 400)} cluster records to database.")
+            else:
+                logger.warning(f"Could not persist clusters: status {resp.status_code} - {resp.text}")
         except Exception as e:
             logger.warning(f"Could not persist clusters to database-api ({e})")
 

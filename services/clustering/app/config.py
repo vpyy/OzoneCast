@@ -7,16 +7,19 @@ import os
 import logging
 from typing import Dict, List
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [CLUSTERING] %(message)s",
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="[%(asctime)s] [%(levelname)s] [clustering] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("ozonecast.clustering")
 
-# ── API Endpoints ─────────────────────────────────────────────────────────────
+# ── API Endpoints & Intervals ─────────────────────────────────────────────────
 DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
+CLUSTERING_INTERVAL_SECONDS = int(os.getenv("CLUSTERING_INTERVAL_SECONDS", "86400"))
 
 # ── Feature Specification ─────────────────────────────────────────────────────
 # 4 biến đặc trưng cốt lõi theo kiến trúc đề án:

@@ -6,16 +6,19 @@ Quy chuẩn các tham số khí quyển, ngưỡng chất lượng vệ tinh NAS
 import os
 import logging
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] [DATA-ANALYSIS] %(message)s",
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="[%(asctime)s] [%(levelname)s] [data-analysis] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("ozonecast.data_analysis")
 
-# ── API Endpoints ─────────────────────────────────────────────────────────────
+# ── API Endpoints & Intervals ─────────────────────────────────────────────────
 DATABASE_API_URL = os.getenv("DATABASE_API_URL", "http://database-api:8000")
+ANALYSIS_INTERVAL_SECONDS = int(os.getenv("ANALYSIS_INTERVAL_SECONDS", "300"))
 
 # ── Lưới không gian (Spatial Binning) ──────────────────────────────────────────
 DEFAULT_GRID_RESOLUTION = 0.5  # độ (0.5° × 0.5° tương đương ~55km ở xích đạo)

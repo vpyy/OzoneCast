@@ -30,15 +30,16 @@ class TimeSeriesAnalyzer:
         # Nếu dữ liệu thô chưa đủ điểm đo, tạo chuỗi mô phỏng khí quyển thực tế
         work_df = df.copy() if not df.empty and len(df) >= 10 else cls._generate_atmospheric_synthetic_data()
 
-        # Chuẩn hóa cột thời gian time_dt
+        # Chuẩn hóa cột thời gian time_dt về UTC timezone-aware
         if "created_at" in work_df.columns:
-            work_df["time_dt"] = pd.to_datetime(work_df["created_at"], errors="coerce")
+            work_df["time_dt"] = pd.to_datetime(work_df["created_at"], utc=True, errors="coerce")
         elif "timestamp" in work_df.columns:
-            work_df["time_dt"] = pd.to_datetime(work_df["timestamp"], errors="coerce")
+            work_df["time_dt"] = pd.to_datetime(work_df["timestamp"], utc=True, errors="coerce")
         else:
-            work_df["time_dt"] = pd.date_range(end=datetime.utcnow(), periods=len(work_df), freq="h")
+            work_df["time_dt"] = pd.date_range(end=pd.Timestamp.now(tz="UTC"), periods=len(work_df), freq="h")
 
-        work_df["time_dt"] = work_df["time_dt"].fillna(datetime.utcnow())
+        now_utc = pd.Timestamp.now(tz="UTC")
+        work_df["time_dt"] = work_df["time_dt"].fillna(now_utc)
         work_df = work_df.sort_values("time_dt")
 
         periods = ["day", "week", "month"]

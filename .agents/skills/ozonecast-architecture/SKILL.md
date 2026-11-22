@@ -8,13 +8,20 @@ description: Kiến trúc và quy tắc chung của dự án OzoneCast (dự đo
 ## Use this skill when
 - Làm việc ở data-ingestion, backend-services, database-api, frontend, db/init, docker-compose.
 
-## Kiến trúc (không được đổi)
-NASA OMI OMTO3G -> data-ingestion -> PostgreSQL <- backend-services (analysis/clustering/prediction)
-PostgreSQL -> database-api (FastAPI, chỉ đọc, WebSocket stream /ws/stream & REST) -> frontend (WebSocket thời gian thực, fallback REST polling)
+## Kiến trúc (Microservices Architecture)
+NASA OMI OMTO3G -> data-ingestion (mỗi 5 phút) -> PostgreSQL
+PostgreSQL <- data-analysis (mỗi 5 phút)
+PostgreSQL <- prediction (mỗi 5 phút)
+PostgreSQL <- clustering (mỗi 1 ngày)
+PostgreSQL -> database-api (FastAPI, chỉ đọc, WebSocket stream /ws/stream & REST) -> frontend (React + Vite)
 
 ## Quy tắc chung
-1. Mỗi service là một container độc lập, giao tiếp CHỈ qua PostgreSQL. Không gọi HTTP chéo giữa service.
-2. Chỉ data-ingestion và backend-services được ghi DB. database-api chỉ SELECT (chỉ đọc). database-api được dùng thêm WebSocket (/ws/stream) để đẩy cập nhật trực tiếp tới frontend thay cho việc chỉ polling thuần túy.
+1. Mỗi service là một container độc lập, giao tiếp CHỈ qua PostgreSQL / database-api. Không gọi HTTP chéo giữa 3 worker services.
+2. 3 backend services chạy độc lập với vai trò daemon workers:
+   - data-analysis: tính toán spatial grid summary, phát hiện lỗ thủng ozone (< 220 DU), phân rã chuỗi thời gian (trend/seasonal/residual) và ma trận tương quan.
+   - prediction: huấn luyện Random Forest Regressor & Classifier, dự báo nồng độ ozone ngày mai và phân loại rủi ro UV.
+   - clustering: phân cụm không gian K-Means & DBSCAN dựa trên tọa độ, nồng độ ozone và độ phản xạ.
+3. Chỉ data-ingestion và 3 backend services được ghi DB. database-api chỉ SELECT (chỉ đọc). database-api dùng WebSocket (/ws/stream) để đẩy cập nhật trực tiếp tới frontend thay cho việc chỉ polling thuần túy.
 3. Cấu hình qua biến môi trường. Không hardcode secret. Trong container, host DB là "postgres".
 4. Dữ liệu: nguồn vệ tinh OMI/Aura OMTO3G (L2G Gridded), vùng Bán đảo Nam Cực (lat -70..-63, lon -75..-55), biến chính ColumnAmountO3 (DU). Lọc cắt vùng theo chỉ số ô lưới, giữ từng quan sát hợp lệ (nhiều lớp quan sát trong 1 ô lưới).
 5. Giá trị thiếu (fill value ~ -1.27e30, đêm cực) phải đổi thành NaN/NULL, không bao giờ thay bằng 0.

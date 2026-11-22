@@ -33,10 +33,19 @@ export const api = {
   getAnomalies: (limit = 100) =>
     axios.get(`${API_BASE.db}/api/anomalies?limit=${limit}`).then((res) => res.data),
 
-  getClusters: (limit = 300) =>
-    axios.get(`${API_BASE.db}/api/clusters?limit=${limit}`).then((res) => res.data),
+  getClusters: (limit = 1000, offset = 0, algorithm = null) => {
+    const q = new URLSearchParams({ limit, offset });
+    if (algorithm) q.append('algorithm', algorithm);
+    return axios.get(`${API_BASE.db}/api/clusters?${q.toString()}`).then((res) => res.data);
+  },
+
+  getClustersSummary: () =>
+    axios.get(`${API_BASE.db}/api/clusters/summary`).then((res) => res.data),
 
   // Analytics & AI Cache Endpoints
+  getAnalysisOverview: () =>
+    axios.get(`${API_BASE.db}/api/analysis`).then((res) => res.data),
+
   getTimeseries: (period = 'day') =>
     axios.get(`${API_BASE.db}/api/analysis/timeseries?period=${period}`).then((res) => res.data),
 
@@ -49,15 +58,16 @@ export const api = {
   getTomorrowPrediction: () =>
     axios.get(`${API_BASE.db}/api/prediction/tomorrow`).then((res) => res.data),
 
-  // ── Machine Learning & AI Prediction (backend-services :8004 kèm fallback :8000) ──
+  getPredictions: (limit = 30) =>
+    axios.get(`${API_BASE.db}/api/predictions?limit=${limit}`).then((res) => res.data),
+
+  // ── Machine Learning & AI Prediction (Database API :8000) ──────────────────
   predictOzone: (latitude, longitude, datetime = null) =>
-    axios.post(`${API_BASE.prediction}/api/prediction/predict`, { latitude, longitude, datetime })
-      .catch(() => axios.post(`${API_BASE.db}/api/prediction/predict`, { latitude, longitude, datetime }))
+    axios.post(`${API_BASE.db}/api/prediction/predict`, { latitude, longitude, datetime })
       .then((res) => res.data),
 
   trainModel: () =>
-    axios.post(`${API_BASE.prediction}/api/prediction/train`)
-      .catch(() => axios.post(`${API_BASE.db}/api/prediction/train`))
+    axios.post(`${API_BASE.db}/api/prediction/train`)
       .then((res) => res.data),
 
   // ── Trigger Ingest (qua Service 1: data-ingestion :8002) ───────────────────

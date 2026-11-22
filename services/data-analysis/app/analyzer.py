@@ -29,7 +29,7 @@ class OzoneAnalyzer:
     """Facade orchestrator điều phối toàn bộ luồng phân tích khai phá dữ liệu."""
 
     @staticmethod
-    def fetch_raw_data_from_db(granule_name: Optional[str] = None, limit: int = 5000) -> pd.DataFrame:
+    def fetch_raw_data_from_db(granule_name: Optional[str] = None, limit: int = 50000) -> pd.DataFrame:
         """Truy xuất các bản ghi đo đạc từ database-api."""
         url = f"{DATABASE_API_URL}/api/raw-measurements?limit={limit}"
         if granule_name:
@@ -99,8 +99,8 @@ class OzoneAnalyzer:
         start_time = datetime.utcnow()
         logger.info(f"Starting Data Analysis pipeline at {start_time.isoformat()}...")
 
-        # 1. Đọc dữ liệu từ DB
-        raw_df = cls.fetch_raw_data_from_db(granule_name=granule_name, limit=5000)
+        # 1. Đọc dữ liệu từ DB (quét toàn bộ tới 50.000 bản ghi để không bỏ sót các granule cũ có bất thường)
+        raw_df = cls.fetch_raw_data_from_db(granule_name=granule_name, limit=50000)
 
         # 2. Làm sạch dữ liệu
         clean_df, prep_stats = DataPreprocessor.clean_raw_measurements(raw_df)
@@ -185,19 +185,24 @@ class OzoneAnalyzer:
                 json={"items": items},
                 timeout=30
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 logger.info(f"Saved {len(items)} spatial grid cells to database.")
+            else:
+                logger.warning(f"Could not sync grid summary: status {resp.status_code} - {resp.text}")
         except Exception as e:
             logger.warning(f"Error syncing grid summary cells: {e}")
 
         # Đồng bộ bất thường
-        synced_anomalies = 0
-        for anom in anomalies:
+        if anomalies:
             try:
-                r = requests.post(f"{DATABASE_API_URL}/api/anomalies", json=anom, timeout=5)
-                if r.status_code == 200:
-                    synced_anomalies += 1
-            except Exception:
-                pass
-        if synced_anomalies > 0:
-            logger.info(f"Synced {synced_anomalies} anomalies to database.")
+                resp_anom = requests.post(
+                    f"{DATABASE_API_URL}/api/anomalies/bulk",
+                    json={"items": anomalies},
+                    timeout=15
+                )
+                if resp_anom.status_code in (200, 201):
+                    logger.info(f"Synced {len(anomalies)} anomalies to database.")
+                else:
+                    logger.warning(f"Could not sync anomalies bulk: status {resp_anom.status_code} - {resp_anom.text}")
+            except Exception as e:
+                logger.warning(f"Error syncing anomalies: {e}")

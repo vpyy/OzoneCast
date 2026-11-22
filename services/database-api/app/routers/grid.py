@@ -1,5 +1,7 @@
-from typing import List, Optional, Annotated
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime
+from typing import List, Optional, Annotated, Dict, Any
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..db import get_db
@@ -7,6 +9,83 @@ from ..models import OzoneGridSummary
 from ..schemas.grid import GridSummaryResponse
 
 router = APIRouter(prefix="/api/grid-summary", tags=["Grid Summary"])
+
+
+class GridSummaryCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    source_filename: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    lat_bin: float
+    lon_bin: float
+    ozone_column_mean: float
+    ozone_column_min: Optional[float] = None
+    ozone_column_max: Optional[float] = None
+    reflectivity_mean: Optional[float] = 0.0
+    uv_aerosol_mean: Optional[float] = 0.0
+    valid_pixel_count: Optional[int] = 1
+
+
+class GridSummaryBulkCreate(BaseModel):
+    items: List[GridSummaryCreate]
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+def create_grid_summary_bulk(
+    payload: GridSummaryBulkCreate,
+    db: Annotated[Session, Depends(get_db)]
+) -> Dict[str, Any]:
+    """Nhận và lưu trữ hàng loạt ô lưới không gian (Spatial Binning) từ backend-services."""
+    if not payload.items:
+        return {"status": "ok", "inserted": 0}
+
+    now = datetime.utcnow()
+    # Nếu nạp cùng source_filename, có thể xóa cũ để thay thế phiên bản mới nhất
+    sample_source = payload.items[0].source_filename
+    if sample_source:
+        db.query(OzoneGridSummary).filter(OzoneGridSummary.source_filename == sample_source).delete(synchronize_session=False)
+
+    objects = [
+        OzoneGridSummary(
+            source_filename=it.source_filename,
+            timestamp=it.timestamp or now,
+            lat_bin=it.lat_bin,
+            lon_bin=it.lon_bin,
+            ozone_column_mean=it.ozone_column_mean,
+            ozone_column_min=it.ozone_column_min,
+            ozone_column_max=it.ozone_column_max,
+            reflectivity_mean=it.reflectivity_mean or 0.0,
+            uv_aerosol_mean=it.uv_aerosol_mean or 0.0,
+            valid_pixel_count=it.valid_pixel_count or 1
+        )
+        for it in payload.items
+    ]
+    db.bulk_save_objects(objects)
+    db.commit()
+    return {"status": "ok", "inserted": len(objects)}
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_grid_summary_single(
+    payload: GridSummaryCreate,
+    db: Annotated[Session, Depends(get_db)]
+) -> Dict[str, Any]:
+    """Lưu trữ một ô lưới không gian đơn lẻ."""
+    obj = OzoneGridSummary(
+        source_filename=payload.source_filename,
+        timestamp=payload.timestamp or datetime.utcnow(),
+        lat_bin=payload.lat_bin,
+        lon_bin=payload.lon_bin,
+        ozone_column_mean=payload.ozone_column_mean,
+        ozone_column_min=payload.ozone_column_min,
+        ozone_column_max=payload.ozone_column_max,
+        reflectivity_mean=payload.reflectivity_mean or 0.0,
+        uv_aerosol_mean=payload.uv_aerosol_mean or 0.0,
+        valid_pixel_count=payload.valid_pixel_count or 1
+    )
+    db.add(obj)
+    db.commit()
+    return {"status": "ok", "id": obj.id}
+
 
 @router.get("", response_model=List[GridSummaryResponse])
 def get_grid_summary(
