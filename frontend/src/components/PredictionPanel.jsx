@@ -481,20 +481,68 @@ export default function PredictionPanel() {
 
           {/* Presets */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
-            {PRESETS.map((p, i) => (
-              <button key={i} onClick={() => { setLat(p.lat); setLon(p.lon); }}
-                style={{
-                  textAlign: 'left', padding: '7px 9px',
-                  background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4,
-                  cursor: 'pointer', transition: 'border-color 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
-                onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
-              >
-                <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 500, color: C.textPrimary }}>{p.name}</div>
-                <div style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>{p.lat}°, {p.lon}°</div>
-              </button>
-            ))}
+            {PRESETS.map((p, i) => {
+              const isSelected = parseFloat(lat) === parseFloat(p.lat) && parseFloat(lon) === parseFloat(p.lon);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => { setLat(p.lat); setLon(p.lon); }}
+                  style={{
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    background: isSelected ? '#f0f9ff' : C.surfaceAlt,
+                    border: isSelected ? '2px solid #0284c7' : `1px solid ${C.border}`,
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease-in-out',
+                    position: 'relative',
+                    boxShadow: isSelected ? '0 0 0 2px rgba(2, 132, 199, 0.2), 0 2px 4px rgba(2, 132, 199, 0.1)' : 'none',
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) {
+                      e.currentTarget.style.borderColor = C.accent;
+                      e.currentTarget.style.background = '#f8fafc';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) {
+                      e.currentTarget.style.borderColor = C.border;
+                      e.currentTarget.style.background = C.surfaceAlt;
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                    <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#0369a1' : C.textPrimary }}>
+                      {p.name}
+                    </div>
+                    {isSelected && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 15,
+                          height: 15,
+                          borderRadius: '50%',
+                          backgroundColor: '#0284c7',
+                          color: '#ffffff',
+                          fontSize: 9,
+                          fontWeight: 'bold',
+                          flexShrink: 0
+                        }}
+                        title="Đang chọn vị trí này"
+                      >
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ ...monoStyle, fontSize: 10, color: isSelected ? '#0284c7' : C.textMuted, marginTop: 2, fontWeight: isSelected ? 600 : 400 }}>
+                    {p.lat}°, {p.lon}°
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <form onSubmit={handlePredict} style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>

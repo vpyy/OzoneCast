@@ -40,6 +40,7 @@ export default function OzoneMap({
   const [activeLayer, setActiveLayer] = useState(mode || 'grid'); // 'grid' | 'heat' | 'raw'
   const [selectedDate, setSelectedDate] = useState('all');
   const [currentZoom, setCurrentZoom] = useState(4);
+  const [cursorCoords, setCursorCoords] = useState(null); // { lat: number, lon: number } | null
 
   // Đồng bộ prop mode từ component cha
   useEffect(() => {
@@ -279,6 +280,20 @@ export default function OzoneMap({
     // Lắng nghe thay đổi mức zoom
     map.on('zoomend', function () {
       setCurrentZoom(map.getZoom());
+    });
+
+    // Lắng nghe di chuyển con trỏ chuột trên bản đồ để cập nhật tọa độ
+    map.on('mousemove', function (e) {
+      if (e && e.latlng) {
+        setCursorCoords({
+          lat: Number(e.latlng.lat.toFixed(4)),
+          lon: Number(e.latlng.lng.toFixed(4))
+        });
+      }
+    });
+
+    map.on('mouseout', function () {
+      setCursorCoords(null);
     });
 
     leafletMapRef.current = map;
@@ -686,6 +701,18 @@ export default function OzoneMap({
                 <span>🚨 {stats.holeCount} điểm &lt;220 DU</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Hiển thị Tọa độ Con trỏ chuột Realtime (Góc dưới bên phải) */}
+        {cursorCoords && (
+          <div className="absolute bottom-3 right-3 z-[400] bg-slate-900/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-[11px] font-mono shadow-lg border border-slate-700 flex items-center gap-2 pointer-events-none select-none">
+            <MapPin className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-slate-400">Vĩ độ (Lat):</span>
+            <span className="font-semibold text-slate-100">{cursorCoords.lat > 0 ? `+${cursorCoords.lat}°N` : `${cursorCoords.lat}°S`}</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-slate-400">Kinh độ (Lon):</span>
+            <span className="font-semibold text-slate-100">{cursorCoords.lon > 0 ? `+${cursorCoords.lon}°E` : `${cursorCoords.lon}°W`}</span>
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { LineChart, BarChart2, ScatterChart, Calendar, RefreshCw, ZoomIn, Clock, Database, MoveHorizontal } from 'lucide-react';
 import { api, API_BASE } from '../api/apiClient';
 import { useWebSocket } from '../lib/useWebSocket';
@@ -10,7 +10,9 @@ function useDragScroll() {
   const ref = useRef(null);
   const isDown = useRef(false);
   const startX = useRef(0);
+  const startY = useRef(0);
   const scrollLeft = useRef(0);
+  const scrollTop = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
   const onMouseDown = useCallback((e) => {
@@ -19,15 +21,20 @@ function useDragScroll() {
     isDown.current = true;
     setIsDragging(true);
     startX.current = e.pageX - ref.current.offsetLeft;
+    startY.current = e.pageY - ref.current.offsetTop;
     scrollLeft.current = ref.current.scrollLeft;
+    scrollTop.current = ref.current.scrollTop;
   }, []);
 
   const onMouseMove = useCallback((e) => {
     if (!isDown.current || !ref.current) return;
     e.preventDefault();
     const x = e.pageX - ref.current.offsetLeft;
-    const walk = (x - startX.current) * 1.5;
-    ref.current.scrollLeft = scrollLeft.current - walk;
+    const y = e.pageY - ref.current.offsetTop;
+    const walkX = (x - startX.current) * 1.5;
+    const walkY = (y - startY.current) * 1.5;
+    ref.current.scrollLeft = scrollLeft.current - walkX;
+    ref.current.scrollTop = scrollTop.current - walkY;
   }, []);
 
   const onMouseUp = useCallback(() => {
@@ -150,19 +157,71 @@ export default function AnalyticsCharts() {
     return () => el.removeEventListener('wheel', onWheel);
   }, [histDrag.ref]);
 
-  // Dữ liệu sau khi áp dụng bộ lọc
-  const linePoints = (data?.line_chart || []).filter(
-    (d) => d.ozone_mean >= ozoneMin && d.ozone_mean <= ozoneMax
-  );
-  const scatterPoints = (data?.scatter_plot || []).filter(
-    (p) =>
-      p.y_ozone >= ozoneMin &&
-      p.y_ozone <= ozoneMax &&
-      p.x_sza >= szaMin &&
-      p.x_sza <= szaMax &&
-      (p.cloud_fraction || 0) <= cloudFraction
-  );
-  const histBars = data?.histogram || [];
+  // Dữ liệu sau khi áp dụng bộ lọc đồng bộ
+  const linePoints = useMemo(() => {
+    return (data?.line_chart || []).filter(
+      (d) => d.ozone_mean >= ozoneMin && d.ozone_mean <= ozoneMax
+    );
+  }, [data?.line_chart, ozoneMin, ozoneMax]);
+
+  const scatterPoints = useMemo(() => {
+    return (data?.scatter_plot || []).filter(
+      (p) =>
+        p.y_ozone >= ozoneMin &&
+        p.y_ozone <= ozoneMax &&
+        p.x_sza >= szaMin &&
+        p.x_sza <= szaMax &&
+        (p.cloud_fraction || 0) <= cloudFraction
+    );
+  }, [data?.scatter_plot, ozoneMin, ozoneMax, szaMin, szaMax, cloudFraction]);
+
+  // Biểu đồ 3 (Histogram): Tự động tính toán lại các cột tần suất theo đúng các điểm đã lọc đủ cả 3 tiêu chí: Ozone, SZA và Mây
+  const histBars = useMemo(() => {
+    const pts = scatterPoints;
+    const numBins = 10;
+    const oMin = ozoneMin;
+    const oMax = Math.max(ozoneMax, oMin + 10);
+    const step = (oMax - oMin) / numBins;
+
+    const bins = Array.from({ length: numBins }, (_, i) => {
+      const bStart = Math.round(oMin + i * step);
+      const bEnd = Math.round(oMin + (i + 1) * step);
+      return {
+        bin_start: bStart,
+        bin_end: bEnd,
+        count: 0
+      };
+    });
+
+    if (pts && pts.length > 0) {
+      pts.forEach((p) => {
+        const val = p.y_ozone;
+        if (val >= oMin && val <= oMax) {
+          let idx = Math.floor((val - oMin) / step);
+          if (idx >= numBins) idx = numBins - 1;
+          if (idx >= 0) bins[idx].count++;
+        }
+      });
+      return bins;
+    }
+
+    return bins;
+  }, [scatterPoints, ozoneMin, ozoneMax]);
+
+  // Tự động co giãn dải trục X của Scatter Plot theo SZA thực tế tại Nam Cực
+  const szaPlotMin = useMemo(() => {
+    if (!scatterPoints || scatterPoints.length === 0) return 70;
+    const minVal = Math.min(...scatterPoints.map((p) => p.x_sza));
+    return Math.max(szaMin, Math.floor(minVal - 2));
+  }, [scatterPoints, szaMin]);
+
+  const szaPlotMax = useMemo(() => {
+    if (!scatterPoints || scatterPoints.length === 0) return 90;
+    const maxVal = Math.max(...scatterPoints.map((p) => p.x_sza));
+    return Math.min(90, Math.ceil(maxVal + 2));
+  }, [scatterPoints, szaMax]);
+
+  const szaSpan = Math.max(szaPlotMax - szaPlotMin, 4);
 
   // Line chart SVG calculation
   const maxOzone = Math.max(...linePoints.map((d) => d.ozone_max || d.ozone_mean || 320), 380);
@@ -469,15 +528,15 @@ export default function AnalyticsCharts() {
           >
             {linePoints.length > 0 ? (() => {
               const baseSvgW = 950;
-              const chartInnerW = baseSvgW - lineMargin.left - lineMargin.right;
-              const labelStep = linePoints.length > 18 ? Math.ceil(linePoints.length / 14) : 1;
+              const currentSvgW = Math.round(baseSvgW * lineZoom);
+              const chartInnerW = currentSvgW - lineMargin.left - lineMargin.right;
+              const labelStep = linePoints.length > 18 ? Math.ceil(linePoints.length / Math.max(1, Math.round(14 * lineZoom))) : 1;
 
               return (
                 <div style={{ width: `${Math.round(100 * lineZoom)}%`, minWidth: '100%', height: '100%' }}>
                   <svg
                     className="w-full h-full overflow-visible"
-                    viewBox={`0 0 ${baseSvgW} ${lineSvgH}`}
-                    preserveAspectRatio="none"
+                    viewBox={`0 0 ${currentSvgW} ${lineSvgH}`}
                   >
                     <defs>
                       <linearGradient id="ozoneAreaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -495,7 +554,7 @@ export default function AnalyticsCharts() {
                           <line
                             x1={lineMargin.left}
                             y1={yPos}
-                            x2={baseSvgW - lineMargin.right}
+                            x2={currentSvgW - lineMargin.right}
                             y2={yPos}
                             stroke="#f1f5f9"
                             strokeWidth="1.2"
@@ -521,14 +580,14 @@ export default function AnalyticsCharts() {
                         <line
                           x1={lineMargin.left}
                           y1={getY(220)}
-                          x2={baseSvgW - lineMargin.right}
+                          x2={currentSvgW - lineMargin.right}
                           y2={getY(220)}
                           stroke="#ef4444"
                           strokeWidth="1.5"
                           strokeDasharray="5 3"
                         />
                         <text
-                          x={baseSvgW - lineMargin.right - 5}
+                          x={currentSvgW - lineMargin.right - 5}
                           y={getY(220) - 6}
                           fontSize="10"
                           fill="#dc2626"
@@ -644,7 +703,7 @@ export default function AnalyticsCharts() {
                           {isHovered && showTooltip && (
                             <g className="select-none">
                               <rect
-                                x={Math.max(10, Math.min(baseSvgW - 150, cx - 75))}
+                                x={Math.max(10, Math.min(currentSvgW - 155, cx - 75))}
                                 y={Math.max(5, cy - 60)}
                                 width="150"
                                 height="52"
@@ -653,7 +712,7 @@ export default function AnalyticsCharts() {
                                 opacity="0.95"
                               />
                               <text
-                                x={Math.max(85, Math.min(baseSvgW - 75, cx))}
+                                x={Math.max(85, Math.min(currentSvgW - 80, cx))}
                                 y={Math.max(5, cy - 60) + 18}
                                 textAnchor="middle"
                                 fontSize="11"
@@ -748,21 +807,29 @@ export default function AnalyticsCharts() {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-2 border-b border-slate-100">
             <div>
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
-                2. Biểu đồ phân tán (Scatter Plot) — SZA vs Ozone & Vĩ độ
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+                  2. Biểu đồ phân tán (Scatter Plot) — SZA vs Ozone & Vĩ độ
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                  {scatterPoints.length} điểm đo
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Trục X: Solar Zenith Angle (10°-85°) • Trục Y: Ozone (DU) • Màu: Vĩ độ
+                Trục X: SZA ({szaPlotMin}° - {szaPlotMax}°) • Trục Y: Ozone (DU) • Màu: Vĩ độ
               </p>
             </div>
 
             {/* Điều khiển Zoom của Biểu đồ Phân tán */}
             <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
-              <span className="text-[10px] text-slate-500">Zoom:</span>
+              <span className="text-[10.5px] text-slate-500 flex items-center gap-0.5">
+                <MoveHorizontal className="w-3 h-3" /> Zoom 2D:
+              </span>
               <button
                 onClick={() => setScatterZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
                 className="w-4 h-4 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded text-xs transition"
+                title="Thu nhỏ 2 chiều"
               >
                 −
               </button>
@@ -774,11 +841,12 @@ export default function AnalyticsCharts() {
                 value={scatterZoom}
                 onChange={(e) => setScatterZoom(parseFloat(e.target.value))}
                 className="w-16 accent-violet-600 h-1 bg-slate-200 rounded cursor-pointer"
-                title="Kéo chuột để phóng to / thu nhỏ"
+                title="Kéo chuột để phóng to / thu nhỏ cả 2 trục (dọc & ngang)"
               />
               <button
                 onClick={() => setScatterZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
                 className="w-4 h-4 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded text-xs transition"
+                title="Phóng to 2 chiều"
               >
                 +
               </button>
@@ -788,7 +856,8 @@ export default function AnalyticsCharts() {
               {scatterZoom > 1 && (
                 <button
                   onClick={() => setScatterZoom(1)}
-                  className="px-1 text-[10px] bg-violet-100 text-violet-800 rounded font-medium"
+                  className="px-1 text-[10px] bg-violet-100 hover:bg-violet-200 text-violet-800 rounded font-medium transition"
+                  title="Đặt lại về 100%"
                 >
                   100%
                 </button>
@@ -796,142 +865,151 @@ export default function AnalyticsCharts() {
             </div>
           </div>
 
-          {/* Vùng vẽ Scatter Plot (Cao 260px) — KÉO CHUỘT DUYỆT */}
+          {/* Vùng vẽ Scatter Plot (Cao 290px) — KÉO CHUỘT DUYỆT 2 CHIỀU (X & Y) */}
           <div
             ref={scatterDrag.ref}
             {...scatterDrag.handlers}
-            className={`h-[260px] w-full relative pt-2 overflow-x-auto bg-gradient-to-b from-slate-50 to-white rounded-lg border border-slate-100 select-none ${
+            className={`h-[290px] w-full relative pt-2 overflow-auto bg-gradient-to-b from-slate-50 to-white rounded-lg border border-slate-100 select-none ${
               scatterDrag.isDragging ? 'cursor-grabbing' : scatterZoom > 1 ? 'cursor-grab' : 'cursor-default'
             }`}
             onMouseLeave={() => setHoveredScatterPoint(null)}
           >
-            {scatterPoints.length > 0 ? (
-              <div style={{ width: `${Math.round(100 * scatterZoom)}%`, minWidth: '100%', height: '100%' }}>
-                <svg
-                  className="w-full h-full overflow-visible"
-                  viewBox="0 0 520 210"
-                  preserveAspectRatio="none"
-                >
-                  {/* Lưới ngang */}
-                  {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
-                    <line key={`h${i}`} x1="45" y1={25 + r * 145} x2="495" y2={25 + r * 145} stroke="#f1f5f9" strokeWidth="1" />
-                  ))}
-                  {/* Lưới dọc */}
-                  {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
-                    <line key={`v${i}`} x1={45 + r * 450} y1="25" x2={45 + r * 450} y2="170" stroke="#f1f5f9" strokeWidth="1" />
-                  ))}
+            {scatterPoints.length > 0 ? (() => {
+              const baseSvgW = 560;
+              const baseSvgH = 220;
+              const chartInnerW = baseSvgW - 55 - 25;
+              const zoomPct = Math.round(100 * scatterZoom);
 
-                  {/* Ngưỡng Thủng Ozone 220 DU */}
-                  <line
-                    x1="45"
-                    y1={170 - ((220 - 150) / 320) * 145}
-                    x2="495"
-                    y2={170 - ((220 - 150) / 320) * 145}
-                    stroke="#dc2626"
-                    strokeWidth="1.5"
-                    strokeDasharray="4 3"
-                  />
-                  <text
-                    x="490"
-                    y={170 - ((220 - 150) / 320) * 145 - 4}
-                    fontSize="9"
-                    fill="#dc2626"
-                    textAnchor="end"
-                    fontWeight="bold"
+              return (
+                <div style={{ width: `${zoomPct}%`, height: `${zoomPct}%`, minWidth: '100%', minHeight: '100%' }}>
+                  <svg
+                    className="w-full h-full overflow-visible"
+                    viewBox={`0 0 ${baseSvgW} ${baseSvgH}`}
                   >
-                    220 DU
-                  </text>
+                    {/* Lưới ngang */}
+                    {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
+                      <line key={`h${i}`} x1="55" y1={25 + r * 145} x2={baseSvgW - 25} y2={25 + r * 145} stroke="#f1f5f9" strokeWidth="1" />
+                    ))}
+                    {/* Lưới dọc & Nhãn trục X tự động trải đều */}
+                    {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
+                      const gx = 55 + r * chartInnerW;
+                      const tickVal = (szaPlotMin + r * szaSpan).toFixed(1);
+                      return (
+                        <g key={`v${i}`}>
+                          <line x1={gx} y1="25" x2={gx} y2="170" stroke="#f1f5f9" strokeWidth="1" />
+                          <text x={gx} y="186" fontSize="9" fill="#64748b" textAnchor="middle" fontFamily="monospace">
+                            {tickVal}°
+                          </text>
+                        </g>
+                      );
+                    })}
 
-                  {/* Các điểm phân tán */}
-                  {scatterPoints.map((pt, i) => {
-                    const cx = 45 + ((pt.x_sza - 10) / 75) * 450;
-                    const cy = 170 - ((pt.y_ozone - 150) / 320) * 145;
-                    const dotColor = getScatterColor(pt);
-                    const isHovered = hoveredScatterPoint === i;
+                    {/* Ngưỡng Thủng Ozone 220 DU */}
+                    <line
+                      x1="55"
+                      y1={170 - ((220 - 150) / 320) * 145}
+                      x2={baseSvgW - 25}
+                      y2={170 - ((220 - 150) / 320) * 145}
+                      stroke="#dc2626"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 3"
+                    />
+                    <text
+                      x={baseSvgW - 30}
+                      y={170 - ((220 - 150) / 320) * 145 - 4}
+                      fontSize="9"
+                      fill="#dc2626"
+                      textAnchor="end"
+                      fontWeight="bold"
+                    >
+                      220 DU
+                    </text>
 
-                    return (
-                      <g
-                        key={i}
-                        className="cursor-pointer"
-                        onMouseEnter={() => setHoveredScatterPoint(i)}
-                        onMouseLeave={() => setHoveredScatterPoint(null)}
-                      >
-                        {isHovered && (
-                          <circle
-                            cx={Math.max(45, Math.min(495, cx))}
-                            cy={Math.max(25, Math.min(170, cy))}
-                            r={7}
-                            fill="none"
-                            stroke={dotColor}
-                            strokeWidth="1.5"
-                            opacity="0.6"
-                          />
-                        )}
-                        <circle
-                          cx={Math.max(45, Math.min(495, cx))}
-                          cy={Math.max(25, Math.min(170, cy))}
-                          r={isHovered ? 4.5 : 2.8}
-                          fill={dotColor}
-                          stroke="#ffffff"
-                          strokeWidth={isHovered ? '1.5' : '0.8'}
-                          opacity={isHovered ? 1 : 0.8}
-                        />
+                    {/* Các điểm phân tán */}
+                    {scatterPoints.map((pt, i) => {
+                      const cx = 55 + ((pt.x_sza - szaPlotMin) / szaSpan) * chartInnerW;
+                      const cy = 170 - ((pt.y_ozone - 150) / 320) * 145;
+                      const dotColor = getScatterColor(pt);
+                      const isHovered = hoveredScatterPoint === i;
 
-                        {/* Tooltip khi hover điểm */}
-                        {isHovered && (
-                          <g className="select-none">
-                            <rect
-                              x={Math.max(10, Math.min(410, cx - 55))}
-                              y={Math.max(5, cy - 42)}
-                              width="110"
-                              height="38"
-                              fill="#0f172a"
-                              rx="5"
-                              opacity="0.95"
+                      return (
+                        <g
+                          key={i}
+                          className="cursor-pointer"
+                          onMouseEnter={() => setHoveredScatterPoint(i)}
+                          onMouseLeave={() => setHoveredScatterPoint(null)}
+                        >
+                          {isHovered && (
+                            <circle
+                              cx={Math.max(55, Math.min(baseSvgW - 25, cx))}
+                              cy={Math.max(25, Math.min(170, cy))}
+                              r={7}
+                              fill="none"
+                              stroke={dotColor}
+                              strokeWidth="1.5"
+                              opacity="0.6"
                             />
-                            <text
-                              x={Math.max(65, Math.min(465, cx))}
-                              y={Math.max(5, cy - 42) + 15}
-                              textAnchor="middle"
-                              fontSize="10"
-                              fill="#f8fafc"
-                              fontWeight="bold"
-                            >
-                              Ozone: {pt.y_ozone} DU
-                            </text>
-                            <text
-                              x={Math.max(65, Math.min(465, cx))}
-                              y={Math.max(5, cy - 42) + 29}
-                              textAnchor="middle"
-                              fontSize="9"
-                              fill="#cbd5e1"
-                            >
-                              SZA: {pt.x_sza}° • Vĩ: {pt.latitude}°
-                            </text>
-                          </g>
-                        )}
-                      </g>
-                    );
-                  })}
+                          )}
+                          <circle
+                            cx={Math.max(55, Math.min(baseSvgW - 25, cx))}
+                            cy={Math.max(25, Math.min(170, cy))}
+                            r={isHovered ? 4.5 : 3.0}
+                            fill={dotColor}
+                            stroke="#ffffff"
+                            strokeWidth={isHovered ? '1.5' : '0.8'}
+                            opacity={isHovered ? 1 : 0.85}
+                          />
 
-                  {/* Nhãn trục */}
-                  <text x="45" y="186" fontSize="9" fill="#64748b" textAnchor="middle">10°</text>
-                  <text x="157" y="186" fontSize="9" fill="#64748b" textAnchor="middle">30°</text>
-                  <text x="270" y="186" fontSize="9" fill="#64748b" textAnchor="middle">50°</text>
-                  <text x="382" y="186" fontSize="9" fill="#64748b" textAnchor="middle">70°</text>
-                  <text x="495" y="186" fontSize="9" fill="#64748b" textAnchor="middle">85°</text>
-                  <text x="270" y="202" fontSize="9.5" fill="#475569" fontWeight="600" textAnchor="middle">
-                    Solar Zenith Angle (SZA, độ)
-                  </text>
+                          {/* Tooltip khi hover điểm */}
+                          {isHovered && (
+                            <g className="select-none">
+                              <rect
+                                x={Math.max(10, Math.min(baseSvgW - 120, cx - 55))}
+                                y={Math.max(5, cy - 42)}
+                                width="110"
+                                height="38"
+                                fill="#0f172a"
+                                rx="5"
+                                opacity="0.95"
+                              />
+                              <text
+                                x={Math.max(65, Math.min(baseSvgW - 65, cx))}
+                                y={Math.max(5, cy - 42) + 15}
+                                textAnchor="middle"
+                                fontSize="10"
+                                fill="#f8fafc"
+                                fontWeight="bold"
+                              >
+                                Ozone: {pt.y_ozone} DU
+                              </text>
+                              <text
+                                x={Math.max(65, Math.min(baseSvgW - 65, cx))}
+                                y={Math.max(5, cy - 42) + 29}
+                                textAnchor="middle"
+                                fontSize="9"
+                                fill="#cbd5e1"
+                              >
+                                SZA: {pt.x_sza}° • Vĩ: {pt.latitude}°
+                              </text>
+                            </g>
+                          )}
+                        </g>
+                      );
+                    })}
 
-                  <text x="40" y="174" fontSize="9" fill="#64748b" textAnchor="end">150</text>
-                  <text x="40" y="102" fontSize="9" fill="#64748b" textAnchor="end">310</text>
-                  <text x="40" y="30" fontSize="9" fill="#64748b" textAnchor="end">470</text>
-                </svg>
-              </div>
-            ) : (
+                    <text x={55 + chartInnerW / 2} y="202" fontSize="9.5" fill="#475569" fontWeight="600" textAnchor="middle">
+                      Solar Zenith Angle (SZA, độ) — Vùng Nam Cực ({szaPlotMin}° → {szaPlotMax}°)
+                    </text>
+
+                    <text x="50" y="174" fontSize="9" fill="#64748b" textAnchor="end">150</text>
+                    <text x="50" y="102" fontSize="9" fill="#64748b" textAnchor="end">310</text>
+                    <text x="50" y="30" fontSize="9" fill="#64748b" textAnchor="end">470</text>
+                  </svg>
+                </div>
+              );
+            })() : (
               <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                Chưa có dữ liệu phân tán...
+                Không có điểm đo nào phù hợp với bộ lọc Ozone / SZA / Mây hiện tại.
               </div>
             )}
           </div>
@@ -953,10 +1031,15 @@ export default function AnalyticsCharts() {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3 pb-2 border-b border-slate-100">
             <div>
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                3. Biểu đồ tần suất (Histogram) — Phân phối Ozone & Phân bố chuẩn
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  3. Biểu đồ tần suất (Histogram) — Phân phối Ozone & Phân bố chuẩn
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {scatterPoints.length} điểm đo
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
                 Trục X: Dải Ozone (DU) • Trục Y: Số lượng điểm đo (Count) • Đường Mean & Median
               </p>
@@ -964,10 +1047,13 @@ export default function AnalyticsCharts() {
 
             {/* Điều khiển Zoom của Biểu đồ Tần suất */}
             <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
-              <span className="text-[10px] text-slate-500">Zoom:</span>
+              <span className="text-[10.5px] text-slate-500 flex items-center gap-0.5">
+                <MoveHorizontal className="w-3 h-3" /> Zoom 2D:
+              </span>
               <button
                 onClick={() => setHistZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
                 className="w-4 h-4 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded text-xs transition"
+                title="Thu nhỏ 2 chiều"
               >
                 −
               </button>
@@ -979,11 +1065,12 @@ export default function AnalyticsCharts() {
                 value={histZoom}
                 onChange={(e) => setHistZoom(parseFloat(e.target.value))}
                 className="w-16 accent-emerald-600 h-1 bg-slate-200 rounded cursor-pointer"
-                title="Kéo chuột để phóng to / thu nhỏ"
+                title="Kéo chuột để phóng to / thu nhỏ cả 2 trục (dọc & ngang)"
               />
               <button
                 onClick={() => setHistZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
                 className="w-4 h-4 flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 rounded text-xs transition"
+                title="Phóng to 2 chiều"
               >
                 +
               </button>
@@ -993,7 +1080,8 @@ export default function AnalyticsCharts() {
               {histZoom > 1 && (
                 <button
                   onClick={() => setHistZoom(1)}
-                  className="px-1 text-[10px] bg-emerald-100 text-emerald-800 rounded font-medium"
+                  className="px-1 text-[10px] bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded font-medium transition"
+                  title="Đặt lại về 100%"
                 >
                   100%
                 </button>
@@ -1001,44 +1089,47 @@ export default function AnalyticsCharts() {
             </div>
           </div>
 
-          {/* Vùng vẽ Histogram (Cao 260px) — KÉO CHUỘT DUYỆT */}
+          {/* Vùng vẽ Histogram (Cao 290px) — KÉO CHUỘT DUYỆT 2 CHIỀU (X & Y) */}
           <div
             ref={histDrag.ref}
             {...histDrag.handlers}
-            className={`h-[260px] w-full relative pt-2 overflow-x-auto bg-gradient-to-b from-slate-50 to-white rounded-lg border border-slate-100 select-none ${
+            className={`h-[290px] w-full relative pt-2 overflow-auto bg-gradient-to-b from-slate-50 to-white rounded-lg border border-slate-100 select-none ${
               histDrag.isDragging ? 'cursor-grabbing' : histZoom > 1 ? 'cursor-grab' : 'cursor-default'
             }`}
             onMouseLeave={() => setHoveredHistBin(null)}
           >
-            {histBars.length > 0 ? (() => {
-              const baseSvgW = 750;
+            {scatterPoints.length > 0 && histBars.length > 0 ? (() => {
+              const baseSvgW = 600;
+              const baseSvgH = 220;
+              const chartInnerW = baseSvgW - 55 - 35;
               const maxCount = Math.max(...histBars.map((b) => b.count), 1);
-              const barWidth = 660 / histBars.length;
+              const barWidth = chartInnerW / histBars.length;
+              const zoomPct = Math.round(100 * histZoom);
 
               let totalValue = 0, totalCount = 0;
               const allValues = [];
               histBars.forEach((b) => {
-                const binW = Math.ceil((380 - 100) / histBars.length);
+                const binW = b.bin_end ? (b.bin_end - b.bin_start) : Math.ceil((ozoneMax - ozoneMin) / histBars.length);
                 totalValue += (b.bin_start + binW / 2) * b.count;
                 totalCount += b.count;
                 for (let j = 0; j < b.count; j++) allValues.push(b.bin_start);
               });
 
-              const meanVal = totalCount > 0 ? totalValue / totalCount : 250;
-              const medianVal = allValues.length > 0 ? allValues[Math.floor(allValues.length / 2)] : 250;
-              const meanX = 45 + ((meanVal - 100) / 280) * 660;
-              const medianX = 45 + ((medianVal - 100) / 280) * 660;
+              const meanVal = totalCount > 0 ? totalValue / totalCount : (ozoneMin + ozoneMax) / 2;
+              const medianVal = allValues.length > 0 ? allValues[Math.floor(allValues.length / 2)] : meanVal;
+              const oSpan = Math.max(ozoneMax - ozoneMin, 20);
+              const meanX = 55 + Math.max(0, Math.min(1, (meanVal - ozoneMin) / oSpan)) * chartInnerW;
+              const medianX = 55 + Math.max(0, Math.min(1, (medianVal - ozoneMin) / oSpan)) * chartInnerW;
 
               return (
-                <div style={{ width: `${Math.round(100 * histZoom)}%`, minWidth: '100%', height: '100%' }}>
+                <div style={{ width: `${zoomPct}%`, height: `${zoomPct}%`, minWidth: '100%', minHeight: '100%' }}>
                   <svg
                     className="w-full h-full overflow-visible"
-                    viewBox={`0 0 ${baseSvgW} 210`}
-                    preserveAspectRatio="none"
+                    viewBox={`0 0 ${baseSvgW} ${baseSvgH}`}
                   >
                     {/* Các cột Histogram */}
                     {histBars.map((b, i) => {
-                      const x = 45 + i * barWidth;
+                      const x = 55 + i * barWidth;
                       const h = (b.count / maxCount) * 135;
                       const y = 165 - h;
                       const isHovered = hoveredHistBin === i;
@@ -1058,7 +1149,7 @@ export default function AnalyticsCharts() {
                           <rect
                             x={x + 3}
                             y={y}
-                            width={barWidth - 6}
+                            width={Math.max(barWidth - 6, 4)}
                             height={h}
                             fill={barColor}
                             rx="3"
@@ -1096,16 +1187,16 @@ export default function AnalyticsCharts() {
                           {isHovered && b.count > 0 && (
                             <g className="select-none">
                               <rect
-                                x={x - 20}
+                                x={Math.max(10, Math.min(baseSvgW - 120, x - 20))}
                                 y={Math.max(5, y - 40)}
-                                width={barWidth + 40}
+                                width={Math.max(barWidth + 40, 100)}
                                 height="32"
                                 fill="#0f172a"
                                 rx="5"
                                 opacity="0.95"
                               />
                               <text
-                                x={x + barWidth / 2}
+                                x={Math.max(60, Math.min(baseSvgW - 60, x + barWidth / 2))}
                                 y={Math.max(5, y - 40) + 14}
                                 textAnchor="middle"
                                 fontSize="10"
@@ -1115,13 +1206,13 @@ export default function AnalyticsCharts() {
                                 {b.count} điểm đo
                               </text>
                               <text
-                                x={x + barWidth / 2}
+                                x={Math.max(60, Math.min(baseSvgW - 60, x + barWidth / 2))}
                                 y={Math.max(5, y - 40) + 26}
                                 textAnchor="middle"
                                 fontSize="8.5"
                                 fill="#cbd5e1"
                               >
-                                {b.bin_start} – {b.bin_start + Math.ceil(280 / histBars.length)} DU
+                                {b.bin_start} – {b.bin_end || (b.bin_start + Math.ceil(oSpan / histBars.length))} DU
                               </text>
                             </g>
                           )}
@@ -1142,17 +1233,17 @@ export default function AnalyticsCharts() {
                     </text>
 
                     {/* Trục X cơ sở */}
-                    <line x1="40" y1="166" x2="710" y2="166" stroke="#cbd5e1" strokeWidth="1.2" />
+                    <line x1="45" y1="166" x2={baseSvgW - 25} y2="166" stroke="#cbd5e1" strokeWidth="1.2" />
 
-                    <text x="375" y="202" textAnchor="middle" fontSize="9.5" fill="#475569" fontWeight="600">
+                    <text x={55 + chartInnerW / 2} y="202" textAnchor="middle" fontSize="9.5" fill="#475569" fontWeight="600">
                       Khoảng Nồng độ Ozone Cột (DU)
                     </text>
                   </svg>
                 </div>
               );
             })() : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                Chưa có dữ liệu phân phối tần suất...
+              <div className="h-full flex items-center justify-center text-slate-400 text-xs font-medium">
+                Không có điểm đo nào phù hợp với bộ lọc Ozone / SZA / Mây hiện tại.
               </div>
             )}
           </div>

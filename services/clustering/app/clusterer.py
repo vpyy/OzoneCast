@@ -58,6 +58,14 @@ class OzoneClusterer:
         labels, _, eval_metrics = KMeansClusterer.fit_predict(X_scaled, n_clusters=n_clusters)
         work_df["cluster_id"] = labels
 
+        # Re-index cluster labels theo nồng độ Ozone trung bình tăng dần
+        # → C-0 luôn = vùng Ozone thấp nhất (nguy cơ cao nhất), C-3 = Ozone dày nhất (an toàn)
+        ozone_col = "ozone_column_mean"
+        cluster_means = work_df.groupby("cluster_id")[ozone_col].mean().sort_values()
+        label_mapping = {old_id: new_idx for new_idx, old_id in enumerate(cluster_means.index)}
+        work_df["cluster_id"] = work_df["cluster_id"].map(label_mapping)
+        logger.info(f"KMeans re-index mapping (by ozone asc): {label_mapping}")
+
         cluster_records, summary_payload = cls._format_and_persist_results(
             work_df=work_df,
             algorithm="KMeans",
@@ -86,6 +94,15 @@ class OzoneClusterer:
             min_samples=min_samples
         )
         work_df["cluster_id"] = labels
+
+        # Re-index DBSCAN cluster labels theo Ozone tăng dần (bỏ qua nhiễu cluster_id=-1)
+        ozone_col = "ozone_column_mean"
+        valid_mask = work_df["cluster_id"] != -1
+        if valid_mask.sum() > 0:
+            cluster_means = work_df.loc[valid_mask].groupby("cluster_id")[ozone_col].mean().sort_values()
+            label_mapping = {old_id: new_idx for new_idx, old_id in enumerate(cluster_means.index)}
+            work_df.loc[valid_mask, "cluster_id"] = work_df.loc[valid_mask, "cluster_id"].map(label_mapping)
+            logger.info(f"DBSCAN re-index mapping (by ozone asc): {label_mapping}")
 
         cluster_records, summary_payload = cls._format_and_persist_results(
             work_df=work_df,

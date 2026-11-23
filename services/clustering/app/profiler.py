@@ -22,6 +22,37 @@ from .config import (
 class ClusterProfiler:
     """Module định danh và trích xuất hồ sơ khí quyển cho các cụm dữ liệu."""
 
+    CLUSTER_CUSTOM_PROFILES = {
+        0: {
+            "tag": "Cụm 1: Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu",
+            "characteristic": (
+                "Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu (Ozone thấp nhất,"
+                " sát ngưỡng thủng)"
+            ),
+        },
+        1: {
+            "tag": "Cụm 2: Vùng hoàn lưu chuyển tiếp ven biển",
+            "characteristic": (
+                "Vùng hoàn lưu chuyển tiếp ven biển (Ven bờ đá lộ thiên / rìa"
+                " ngoài bán đảo)"
+            ),
+        },
+        2: {
+            "tag": "Cụm 3: Vùng lõi thềm băng vĩnh cửu",
+            "characteristic": (
+                "Vùng lõi thềm băng vĩnh cửu (Độ phủ tuyết trắng cao nhất, nồng"
+                " độ ozone trung bình)"
+            ),
+        },
+        3: {
+            "tag": "Cụm 4: Vùng Ozone dày / Khí quyển ổn định ven biển",
+            "characteristic": (
+                "Vùng Ozone dày / Khí quyển ổn định ven biển (Ozone cao nhất,"
+                " khí quyển ổn định an toàn)"
+            ),
+        },
+    }
+
     @classmethod
     def interpret_cluster(
         cls,
@@ -41,28 +72,31 @@ class ClusterProfiler:
                 "characteristic": "Vùng dị biệt mật độ / Nhiễu quan trắc vệ tinh (DBSCAN Noise)"
             }
 
-        # 2. Vùng suy giảm / Lỗ thủng tầng Ozone (< 220 DU theo chuẩn WMO)
-        if mean_ozone < OZONE_HOLE_THRESHOLD_DU:
-            characteristic = "Vùng suy giảm / Lỗ thủng Ozone (Ozone < 220 DU)"
-            tag = f"Cụm {cluster_id + 1}: Vùng suy giảm / Lỗ thủng Ozone"
-            return {"tag": tag, "characteristic": characteristic}
+        # 2. Định danh cụm chuyên biệt cho Bán đảo Nam Cực
+        if cluster_id in cls.CLUSTER_CUSTOM_PROFILES:
+            return cls.CLUSTER_CUSTOM_PROFILES[cluster_id]
 
-        # 3. Vùng mây dày đối lưu hoặc băng tuyết cực (độ phản xạ cao > 50% hoặc vùng cực phản xạ > 40%)
-        if mean_refl >= HIGH_REFLECTIVITY_THRESHOLD or (abs(mean_lat) >= POLAR_LAT_THRESHOLD and mean_refl >= 35.0):
-            characteristic = "Vùng mây dày / Băng tuyết cực (Độ phản xạ cao > 50%)"
-            tag = f"Cụm {cluster_id + 1}: Vùng mây dày / Băng tuyết cực"
-            return {"tag": tag, "characteristic": characteristic}
-
-        # 4. Vùng nhiệt đới / Xích đạo (vĩ độ thấp |lat| < 23.5°)
-        if abs(mean_lat) <= EQUATORIAL_LAT_THRESHOLD:
-            characteristic = "Vùng nhiệt đới / Xích đạo (Bức xạ cao, phản xạ trung bình)"
-            tag = f"Cụm {cluster_id + 1}: Vùng nhiệt đới / Xích đạo"
-            return {"tag": tag, "characteristic": characteristic}
-
-        # 5. Vùng bề mặt / Khí quyển ôn đới thông thường
-        characteristic = "Vùng bề mặt / Khí quyển thông thường"
-        tag = f"Cụm {cluster_id + 1}: Vùng bề mặt / Khí quyển thông thường"
-        return {"tag": tag, "characteristic": characteristic}
+        # 3. Phân loại theo giá trị Ozone & Độ phản xạ (Dynamic fallback)
+        if mean_ozone < 255.0:
+            return {
+                "tag": f"Cụm {cluster_id + 1}: Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu",
+                "characteristic": "Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu (Ozone thấp nhất, sát ngưỡng thủng)"
+            }
+        elif mean_ozone > 275.0:
+            return {
+                "tag": f"Cụm {cluster_id + 1}: Vùng Ozone dày / Khí quyển ổn định ven biển",
+                "characteristic": "Vùng Ozone dày / Khí quyển ổn định ven biển (Ozone cao nhất, khí quyển ổn định an toàn)"
+            }
+        elif mean_refl >= 75.0:
+            return {
+                "tag": f"Cụm {cluster_id + 1}: Vùng lõi thềm băng vĩnh cửu",
+                "characteristic": "Vùng lõi thềm băng vĩnh cửu (Độ phủ tuyết trắng cao nhất, nồng độ ozone trung bình)"
+            }
+        else:
+            return {
+                "tag": f"Cụm {cluster_id + 1}: Vùng hoàn lưu chuyển tiếp ven biển",
+                "characteristic": "Vùng hoàn lưu chuyển tiếp ven biển (Ven bờ đá lộ thiên / rìa ngoài bán đảo)"
+            }
 
     @classmethod
     def summarize_clusters(cls, df: pd.DataFrame) -> List[Dict[str, Any]]:

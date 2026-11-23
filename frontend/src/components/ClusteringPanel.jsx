@@ -15,13 +15,32 @@ import { api } from '../api/apiClient';
 import { C, F, panelStyle, labelStyle, monoStyle, inputStyle, inputLabelStyle, thStyle, tdStyle, btnPrimary, btnSecondary } from '../theme';
 
 const CLUSTER_COLORS = [
-  '#06B6D4', // Cyan (Băng tuyết / Mây)
-  '#3B82F6', // Blue (Đại dương Nam Bán Cầu)
-  '#10B981', // Green (Ổn định bình thường)
-  '#EF4444', // Red (Lỗ thủng Ozone < 220 DU)
-  '#F59E0B', // Amber (Nhiệt đới / Chuyển tiếp)
-  '#8B5CF6', // Purple
+  '#EF4444', // Index 0 -> Cụm 1: Đỏ (Vùng rìa suy giảm / cảnh báo thủng Ozone)
+  '#F59E0B', // Index 1 -> Cụm 2: Vàng cam (Vùng hoàn lưu chuyển tiếp ven biển)
+  '#06B6D4', // Index 2 -> Cụm 3: Xanh ngọc (Vùng lõi thềm băng vĩnh cửu)
+  '#10B981', // Index 3 -> Cụm 4: Xanh lá ngọc (Vùng Ozone dày / Khí quyển ổn định an toàn)
+  '#3B82F6', // Index 4
+  '#8B5CF6', // Index 5
 ];
+
+const CLUSTER_CUSTOM_PROFILES = {
+  0: {
+    tag: 'Cụm 1: Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu',
+    characteristic: 'Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu (Ozone thấp nhất, sát ngưỡng thủng)'
+  },
+  1: {
+    tag: 'Cụm 2: Vùng hoàn lưu chuyển tiếp ven biển',
+    characteristic: 'Vùng hoàn lưu chuyển tiếp ven biển (Ven bờ đá lộ thiên / rìa ngoài bán đảo)'
+  },
+  2: {
+    tag: 'Cụm 3: Vùng lõi thềm băng vĩnh cửu',
+    characteristic: 'Vùng lõi thềm băng vĩnh cửu (Độ phủ tuyết trắng cao nhất, nồng độ ozone trung bình)'
+  },
+  3: {
+    tag: 'Cụm 4: Vùng Ozone dày / Khí quyển ổn định ven biển',
+    characteristic: 'Vùng Ozone dày / Khí quyển ổn định ven biển (Ozone cao nhất, khí quyển ổn định an toàn)'
+  }
+};
 
 function getClusterColor(clusterId, isDepleted = false) {
   if (isDepleted) return '#EF4444';
@@ -61,11 +80,12 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
     const map = {};
     clusters.forEach(c => {
       const cid = c.cluster_id;
+      const customProf = CLUSTER_CUSTOM_PROFILES[cid];
       if (!map[cid]) {
         map[cid] = {
           id: cid,
-          tag: c.tag || `Cụm ${cid + 1}`,
-          characteristic: c.characteristic || 'Khu vực khí quyển tiêu chuẩn',
+          tag: customProf?.tag || c.tag || `Cụm ${cid + 1}`,
+          characteristic: customProf?.characteristic || c.characteristic || 'Khu vực khí quyển tiêu chuẩn',
           count: 0,
           sumO3: 0,
           minO3: Infinity,
@@ -191,7 +211,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
                       background: `${C.danger}22`, border: `1px solid ${C.danger}55`,
                       color: C.danger, fontSize: 9, fontWeight: 700, fontFamily: F.heading
                     }}>
-                      <AlertOctagon size={10} /> THỦNG OZONE
+                      <AlertOctagon size={10} /> Warning
                     </span>
                   </div>
                 )}
@@ -380,7 +400,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
                 {hoveredPoint.mean_ozone?.toFixed(1)} DU {hoveredPoint.mean_ozone < 220 ? '(Dưới ngưỡng 220 DU)' : ''}
               </div>
               <div style={{ fontSize: 10, color: C.textSecond, marginTop: 2 }}>
-                Độ phản xạ: {hoveredPoint.mean_reflectivity?.toFixed(1)}% · {hoveredPoint.characteristic || hoveredPoint.tag}
+                Độ phản xạ: {hoveredPoint.mean_reflectivity?.toFixed(1)}% · {CLUSTER_CUSTOM_PROFILES[hoveredPoint.cluster_id]?.characteristic || hoveredPoint.characteristic || hoveredPoint.tag}
               </div>
             </div>
           )}
@@ -428,7 +448,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
                     </td>
                     <td style={tdStyle}>{(c.mean_reflectivity || 20).toFixed(1)}%</td>
                     <td style={{ ...tdStyle, color: acc, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.characteristic || c.tag || 'Bình thường'}
+                      {CLUSTER_CUSTOM_PROFILES[c.cluster_id]?.characteristic || c.characteristic || c.tag || 'Bình thường'}
                     </td>
                   </tr>
                 );

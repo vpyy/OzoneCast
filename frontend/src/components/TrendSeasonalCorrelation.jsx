@@ -26,7 +26,6 @@ const SEASONAL_SCALE    = 1.5;   // Hệ số co giãn mùa vụ trên trục g�
 const RESIDUAL_SCALE    = 2.0;   // Hệ số co giãn phần dư trên trục gộp
 const MAX_POINTS        = 5000;  // Giới hạn bộ nhớ tối đa trong state
 const STALE_MINUTES     = Number(import.meta.env.VITE_LIVE_STALE_MINUTES || 180);
-const IS_MOCK_ENV       = import.meta.env.VITE_MOCK_LIVE === 'true';
 
 // ── BẢNG MÀU TƯƠNG QUAN PEARSON 6×6 ──────────────────────────────────────────
 function getCorrColor(val) {
@@ -351,8 +350,6 @@ export default function TrendSeasonalCorrelation() {
     residual: true
   });
 
-  // Chế độ xem: 'combined' (gộp chung 1 biểu đồ) hoặc 'faceted' (tách 4 tầng)
-  const [viewMode, setViewMode] = useState('combined');
 
   // Zoom & Điều hướng khung nhìn
   const [zoomLevel, setZoomLevel]       = useState(1); // 1 = 100%, 1.5 = 1.5x, 2 = 2x, 3 = 3x
@@ -363,9 +360,6 @@ export default function TrendSeasonalCorrelation() {
   // Hover & Tooltip Crosshair
   const [hoveredIdx, setHoveredIdx]     = useState(null);
   const svgRef = useRef(null);
-
-  // Chế độ phát dữ liệu mẫu trực tiếp (VITE_MOCK_LIVE)
-  const [mockLiveEnabled, setMockLiveEnabled] = useState(IS_MOCK_ENV);
 
   // Batching hàng đợi cập nhật dồn dập qua requestAnimationFrame
   const pendingQueueRef = useRef([]);
@@ -571,39 +565,6 @@ export default function TrendSeasonalCorrelation() {
     fallbackIntervalMs: 30000
   });
 
-  // ── 5. CHẾ ĐỘ THỬ KHÔNG CẦN CHỜ (VITE_MOCK_LIVE) ───────────────────────────
-  useEffect(() => {
-    if (!mockLiveEnabled) return;
-
-    const interval = setInterval(() => {
-      setPoints((prev) => {
-        const last = prev[prev.length - 1];
-        const nextTime = last ? last.time + 2 * 3600 * 1000 : Date.now(); // Nhảy 2 tiếng mô phỏng vệ tinh
-        const prevTrend = last?.trend ?? 295.0;
-        const nextTrend = Number((prevTrend + (Math.random() - 0.49) * 0.4).toFixed(2));
-        const tStep = prev.length + 1;
-        const nextSeasonal = Number((28.0 * Math.sin((2 * Math.PI * tStep) / 12)).toFixed(2));
-        const nextResidual = Number(((Math.random() - 0.5) * 4.5).toFixed(2));
-        const nextObserved = Math.max(160, Math.min(360, Number((nextTrend + nextSeasonal + nextResidual).toFixed(2))));
-
-        const mockItem = {
-          time: nextTime,
-          timestamp: new Date(nextTime).toISOString(),
-          observed: nextObserved,
-          trend: nextTrend,
-          seasonal: nextSeasonal,
-          residual: nextResidual,
-          step: tStep
-        };
-
-        enqueueUpdates([mockItem]);
-        return prev;
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [mockLiveEnabled, enqueueUpdates]);
-
   // Cleanup requestAnimationFrame
   useEffect(() => {
     return () => {
@@ -795,11 +756,6 @@ export default function TrendSeasonalCorrelation() {
                 <h2 className="text-base font-bold text-slate-900 tracking-tight">
                   Phân Tích Xu Hướng, Chu Kỳ Mùa Vụ & Ma Trận Tương Quan Khí Quyển
                 </h2>
-                {mockLiveEnabled && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-                    ⚡ DỮ LIỆU MẪU
-                  </span>
-                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 Mô hình phân rã cộng tính (Additive Decomposition) thời gian thực & Ma trận Pearson 6×6
@@ -841,18 +797,6 @@ export default function TrendSeasonalCorrelation() {
           )}
 
           <button
-            onClick={() => setMockLiveEnabled((prev) => !prev)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
-              mockLiveEnabled
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-            title="Bật/Tắt phát xung dữ liệu 2 giây/lần để xem hiệu ứng sàn chứng khoán"
-          >
-            {mockLiveEnabled ? 'Tắt Mock Live' : 'Thử Mock Live (2s)'}
-          </button>
-
-          <button
             onClick={fetchBackfillData}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition shadow-xs disabled:opacity-50"
@@ -883,26 +827,6 @@ export default function TrendSeasonalCorrelation() {
                 <p className="text-xs text-slate-500 mt-0.5 font-mono">
                   Observed(t) = Trend(t) + Seasonal(t) + Residual(t)
                 </p>
-              </div>
-
-              {/* Chuyển đổi chế độ Gộp chung / Tách 4 tầng */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-medium text-slate-600">
-                <button
-                  onClick={() => setViewMode('combined')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    viewMode === 'combined' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'hover:text-slate-900'
-                  }`}
-                >
-                  Gộp chung
-                </button>
-                <button
-                  onClick={() => setViewMode('faceted')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    viewMode === 'faceted' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'hover:text-slate-900'
-                  }`}
-                >
-                  Tách 4 tầng
-                </button>
               </div>
             </div>
 
@@ -1007,425 +931,297 @@ export default function TrendSeasonalCorrelation() {
             </div>
 
             {/* ── VÙNG HIỂN THỊ SVG BIỂU ĐỒ ── */}
-            <div className="relative mt-2.5 select-none">
-              {viewMode === 'combined' ? (
-                /* CHẾ ĐỘ GỘP CHUNG (COMBINED REALTIME OVERLAY) */
-                <div
-                  className="w-full bg-white rounded-xl border border-slate-100 p-2 relative"
-                  onWheel={handleWheel}
-                >
-                  {visiblePoints.length > 0 ? (
-                    <svg
-                      ref={svgRef}
-                      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                      className="w-full h-auto overflow-visible cursor-crosshair"
-                      onMouseMove={handleMouseMove}
-                      onMouseLeave={handleMouseLeave}
-                    >
-                      {/* Canvas nền trắng */}
-                      <rect
-                        x={margin.left}
-                        y={margin.top}
-                        width={chartW}
-                        height={chartH}
-                        fill="#FFFFFF"
-                      />
+<div className="relative mt-2.5 select-none">
+  <div
+    className="w-full bg-white rounded-xl border border-slate-100 p-2 relative"
+    onWheel={handleWheel}
+  >
+    {visiblePoints.length > 0 ? (
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+        className="w-full h-auto overflow-visible cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+        {/* Canvas nền trắng */}
+        <rect
+          x={margin.left}
+          y={margin.top}
+          width={chartW}
+          height={chartH}
+          fill="#FFFFFF"
+        />
 
-                      {/* Lưới ngang & Trục Y */}
-                      {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
-                        const yVal = Math.round(minY + (1 - r) * (maxY - minY));
-                        const yPos = margin.top + r * chartH;
-                        return (
-                          <g key={i}>
-                            <line
-                              x1={margin.left}
-                              y1={yPos}
-                              x2={svgWidth - margin.right}
-                              y2={yPos}
-                              stroke="#F1F5F9"
-                              strokeWidth="1.2"
-                            />
-                            <text
-                              x={margin.left - 8}
-                              y={yPos + 3}
-                              fontSize="10"
-                              fill="#64748B"
-                              textAnchor="end"
-                              fontFamily="JetBrains Mono, monospace"
-                              fontWeight="500"
-                            >
-                              {yVal}
-                            </text>
-                          </g>
-                        );
-                      })}
+        {/* Lưới ngang & Trục Y */}
+        {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
+          const yVal = Math.round(minY + (1 - r) * (maxY - minY));
+          const yPos = margin.top + r * chartH;
+          return (
+            <g key={i}>
+              <line
+                x1={margin.left}
+                y1={yPos}
+                x2={svgWidth - margin.right}
+                y2={yPos}
+                stroke="#F1F5F9"
+                strokeWidth="1.2"
+              />
+              <text
+                x={margin.left - 8}
+                y={yPos + 3}
+                fontSize="10"
+                fill="#64748B"
+                textAnchor="end"
+                fontFamily="JetBrains Mono, monospace"
+                fontWeight="500"
+              >
+                {yVal}
+              </text>
+            </g>
+          );
+        })}
 
-                      {/* Đơn vị DU */}
-                      <text
-                        x={margin.left - 38}
-                        y={margin.top - 8}
-                        fontSize="9.5"
-                        fontWeight="700"
-                        fill="#475569"
-                        fontFamily="JetBrains Mono, monospace"
-                      >
-                        (DU)
-                      </text>
+        {/* Đơn vị DU */}
+        <text
+          x={margin.left - 38}
+          y={margin.top - 8}
+          fontSize="9.5"
+          fontWeight="700"
+          fill="#475569"
+          fontFamily="JetBrains Mono, monospace"
+        >
+          (DU)
+        </text>
 
-                      {/* 1. Vẽ đường Observed (Thực đo - Nét đứt than chì) */}
-                      {filters.observed &&
-                        observedSegments.map((seg, sIdx) => (
-                          <polyline
-                            key={`obs-${sIdx}`}
-                            fill="none"
-                            stroke="#334155"
-                            strokeWidth="1.9"
-                            strokeDasharray="4 3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            opacity="0.9"
-                            points={seg.join(' ')}
-                          />
-                        ))}
+        {/* 1. Vẽ đường Observed (Thực đo - Nét đứt than chì) */}
+        {filters.observed &&
+          observedSegments.map((seg, sIdx) => (
+            <polyline
+              key={`obs-${sIdx}`}
+              fill="none"
+              stroke="#334155"
+              strokeWidth="1.9"
+              strokeDasharray="4 3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.9"
+              points={seg.join(' ')}
+            />
+          ))}
 
-                      {/* 2. Vẽ đường Trend (Xu hướng - Nét đậm Indigo) */}
-                      {filters.trend &&
-                        trendSegments.map((seg, sIdx) => (
-                          <polyline
-                            key={`trend-${sIdx}`}
-                            fill="none"
-                            stroke="#4F46E5"
-                            strokeWidth="2.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            points={seg.join(' ')}
-                          />
-                        ))}
+        {/* 2. Vẽ đường Trend (Xu hướng - Nét đậm Indigo) */}
+        {filters.trend &&
+          trendSegments.map((seg, sIdx) => (
+            <polyline
+              key={`trend-${sIdx}`}
+              fill="none"
+              stroke="#4F46E5"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={seg.join(' ')}
+            />
+          ))}
 
-                      {/* 3. Vẽ đường Seasonal (Mùa vụ - Cam hổ phách) */}
-                      {filters.seasonal &&
-                        seasonalSegments.map((seg, sIdx) => (
-                          <polyline
-                            key={`seas-${sIdx}`}
-                            fill="none"
-                            stroke="#EA580C"
-                            strokeWidth="2.2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            points={seg.join(' ')}
-                          />
-                        ))}
+        {/* 3. Vẽ đường Seasonal (Mùa vụ - Cam hổ phách) */}
+        {filters.seasonal &&
+          seasonalSegments.map((seg, sIdx) => (
+            <polyline
+              key={`seas-${sIdx}`}
+              fill="none"
+              stroke="#EA580C"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={seg.join(' ')}
+            />
+          ))}
 
-                      {/* 4. Vẽ đường Residual (Phần dư - Xanh ngọc) */}
-                      {filters.residual &&
-                        residualSegments.map((seg, sIdx) => (
-                          <polyline
-                            key={`res-${sIdx}`}
-                            fill="none"
-                            stroke="#0D9488"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            opacity="0.88"
-                            points={seg.join(' ')}
-                          />
-                        ))}
+        {/* 4. Vẽ đường Residual (Phần dư - Xanh ngọc) */}
+        {filters.residual &&
+          residualSegments.map((seg, sIdx) => (
+            <polyline
+              key={`res-${sIdx}`}
+              fill="none"
+              stroke="#0D9488"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.88"
+              points={seg.join(' ')}
+            />
+          ))}
 
-                      {/* ── ĐƯỜNG GIÁ CUỐI (TICKER LAST PRICE LINE) & NHÃN GIÁ GẮN MÉP PHẢI TRỤC Y ── */}
-                      {latestPoint && filters.observed && latestPoint.observed != null && (
-                        <g>
-                          {/* Đường ngang đứt nét giá cuối */}
-                          <line
-                            x1={margin.left}
-                            y1={getY(latestPoint.observed)}
-                            x2={svgWidth - margin.right}
-                            y2={getY(latestPoint.observed)}
-                            stroke={isObservedUp ? '#10B981' : '#EF4444'}
-                            strokeWidth="1"
-                            strokeDasharray="3 3"
-                            opacity="0.7"
-                          />
+        {/* ── ĐƯỜNG GIÁ CUỐI (TICKER LAST PRICE LINE) & NHÃN GIÁ GẮN MÉP PHẢI TRỤC Y ── */}
+        {latestPoint && filters.observed && latestPoint.observed != null && (
+          <g>
+            <line
+              x1={margin.left}
+              y1={getY(latestPoint.observed)}
+              x2={svgWidth - margin.right}
+              y2={getY(latestPoint.observed)}
+              stroke={isObservedUp ? '#10B981' : '#EF4444'}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.7"
+            />
+            <circle
+              cx={getX(latestPoint.time)}
+              cy={getY(latestPoint.observed)}
+              r="4.5"
+              fill="#334155"
+              stroke="#FFFFFF"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx={getX(latestPoint.time)}
+              cy={getY(latestPoint.observed)}
+              r="9"
+              fill={isObservedUp ? '#10B981' : '#EF4444'}
+              opacity="0.3"
+              className="motion-safe:animate-ping"
+            />
+            <g transform={`translate(${svgWidth - margin.right + 2}, ${getY(latestPoint.observed) - 9})`}>
+              <rect
+                width="58"
+                height="18"
+                rx="4"
+                fill={isObservedUp ? '#ECFDF5' : '#FEF2F2'}
+                stroke={isObservedUp ? '#10B981' : '#EF4444'}
+                strokeWidth="1.2"
+              />
+              <text
+                x="29"
+                y="12.5"
+                fontSize="9.5"
+                fontWeight="700"
+                fontFamily="JetBrains Mono, monospace"
+                fill={isObservedUp ? '#065F46' : '#991B1B'}
+                textAnchor="middle"
+              >
+                {latestPoint.observed.toFixed(1)}
+              </text>
+            </g>
+          </g>
+        )}
 
-                          {/* Chấm tròn nhấp nháy phát xung (Pulse) tại điểm cuối cùng */}
-                          <circle
-                            cx={getX(latestPoint.time)}
-                            cy={getY(latestPoint.observed)}
-                            r="4.5"
-                            fill="#334155"
-                            stroke="#FFFFFF"
-                            strokeWidth="1.5"
-                          />
-                          <circle
-                            cx={getX(latestPoint.time)}
-                            cy={getY(latestPoint.observed)}
-                            r="9"
-                            fill={isObservedUp ? '#10B981' : '#EF4444'}
-                            opacity="0.3"
-                            className="motion-safe:animate-ping"
-                          />
+        {/* ── TRỤC X HAI HÀNG CHUẨN THỜI GIAN THẬT ── */}
+        <TwoRowXAxis
+          tStart={tStart}
+          tEnd={tEnd}
+          chartW={chartW}
+          chartH={chartH}
+          margin={margin}
+          svgWidth={svgWidth}
+          getX={getX}
+        />
 
-                          {/* Nhãn giá cuối gắn ở mép phải trục Y (Kiểu sàn chứng khoán) */}
-                          <g transform={`translate(${svgWidth - margin.right + 2}, ${getY(latestPoint.observed) - 9})`}>
-                            <rect
-                              width="58"
-                              height="18"
-                              rx="4"
-                              fill={isObservedUp ? '#ECFDF5' : '#FEF2F2'}
-                              stroke={isObservedUp ? '#10B981' : '#EF4444'}
-                              strokeWidth="1.2"
-                            />
-                            <text
-                              x="29"
-                              y="12.5"
-                              fontSize="9.5"
-                              fontWeight="700"
-                              fontFamily="JetBrains Mono, monospace"
-                              fill={isObservedUp ? '#065F46' : '#991B1B'}
-                              textAnchor="middle"
-                            >
-                              {latestPoint.observed.toFixed(1)}
-                            </text>
-                          </g>
-                        </g>
-                      )}
+        {/* ── HIỆU ỨNG HOVER CROSSHAIR ── */}
+        {hoveredPoint && (
+          <g>
+            <line
+              x1={getX(hoveredPoint.time)}
+              y1={margin.top}
+              x2={getX(hoveredPoint.time)}
+              y2={margin.top + chartH}
+              stroke="#64748B"
+              strokeWidth="1.2"
+              strokeDasharray="3 3"
+            />
+            {filters.observed && hoveredPoint.observed != null && (
+              <circle
+                cx={getX(hoveredPoint.time)}
+                cy={getY(hoveredPoint.observed)}
+                r="4.5"
+                fill="#334155"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              />
+            )}
+            {filters.trend && hoveredPoint.trend != null && (
+              <circle
+                cx={getX(hoveredPoint.time)}
+                cy={getY(hoveredPoint.trend)}
+                r="5"
+                fill="#4F46E5"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              />
+            )}
+            {filters.seasonal && hoveredPoint.seasonal != null && (
+              <circle
+                cx={getX(hoveredPoint.time)}
+                cy={getY(SEASONAL_BASELINE + hoveredPoint.seasonal * SEASONAL_SCALE)}
+                r="4.5"
+                fill="#EA580C"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              />
+            )}
+            {filters.residual && hoveredPoint.residual != null && (
+              <circle
+                cx={getX(hoveredPoint.time)}
+                cy={getY(SEASONAL_BASELINE + hoveredPoint.residual * RESIDUAL_SCALE)}
+                r="4"
+                fill="#0D9488"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              />
+            )}
+          </g>
+        )}
+      </svg>
+    ) : (
+      <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs gap-2">
+        <Sparkles className="w-5 h-5 text-indigo-400 animate-spin" />
+        <span>Chưa có dữ liệu cho Bán đảo Nam Cực...</span>
+      </div>
+    )}
 
-                      {/* ── TRỤC X HAI HÀNG CHUẨN THỜI GIAN THẬT ── */}
-                      <TwoRowXAxis
-                        tStart={tStart}
-                        tEnd={tEnd}
-                        chartW={chartW}
-                        chartH={chartH}
-                        margin={margin}
-                        svgWidth={svgWidth}
-                        getX={getX}
-                      />
+    {/* Nút nổi báo điểm mới khi follow tạm dừng */}
+    {!isFollowing && unseenCount > 0 && (
+      <button
+        onClick={handleResumeFollow}
+        className="absolute bottom-16 right-6 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-lg hover:bg-indigo-700 transition animate-bounce"
+      >
+        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>+{unseenCount} điểm mới</span>
+        <span className="text-indigo-200">|</span>
+        <span>Về mới nhất</span>
+      </button>
+    )}
+  </div>
+</div>
 
-                      {/* ── HIỆU ỨNG HOVER CROSSHAIR ── */}
-                      {hoveredPoint && (
-                        <g>
-                          <line
-                            x1={getX(hoveredPoint.time)}
-                            y1={margin.top}
-                            x2={getX(hoveredPoint.time)}
-                            y2={margin.top + chartH}
-                            stroke="#64748B"
-                            strokeWidth="1.2"
-                            strokeDasharray="3 3"
-                          />
-
-                          {filters.observed && hoveredPoint.observed != null && (
-                            <circle
-                              cx={getX(hoveredPoint.time)}
-                              cy={getY(hoveredPoint.observed)}
-                              r="4.5"
-                              fill="#334155"
-                              stroke="#FFFFFF"
-                              strokeWidth="2"
-                            />
-                          )}
-
-                          {filters.trend && hoveredPoint.trend != null && (
-                            <circle
-                              cx={getX(hoveredPoint.time)}
-                              cy={getY(hoveredPoint.trend)}
-                              r="5"
-                              fill="#4F46E5"
-                              stroke="#FFFFFF"
-                              strokeWidth="2"
-                            />
-                          )}
-
-                          {filters.seasonal && hoveredPoint.seasonal != null && (
-                            <circle
-                              cx={getX(hoveredPoint.time)}
-                              cy={getY(SEASONAL_BASELINE + hoveredPoint.seasonal * SEASONAL_SCALE)}
-                              r="4.5"
-                              fill="#EA580C"
-                              stroke="#FFFFFF"
-                              strokeWidth="2"
-                            />
-                          )}
-
-                          {filters.residual && hoveredPoint.residual != null && (
-                            <circle
-                              cx={getX(hoveredPoint.time)}
-                              cy={getY(SEASONAL_BASELINE + hoveredPoint.residual * RESIDUAL_SCALE)}
-                              r="4"
-                              fill="#0D9488"
-                              stroke="#FFFFFF"
-                              strokeWidth="2"
-                            />
-                          )}
-                        </g>
-                      )}
-                    </svg>
-                  ) : (
-                    <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs gap-2">
-                      <Sparkles className="w-5 h-5 text-indigo-400 animate-spin" />
-                      <span>Chưa có dữ liệu cho Bán đảo Nam Cực...</span>
-                    </div>
-                  )}
-
-                  {/* Nút nổi báo điểm mới khi follow tạm dừng */}
-                  {!isFollowing && unseenCount > 0 && (
-                    <button
-                      onClick={handleResumeFollow}
-                      className="absolute bottom-16 right-6 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-lg hover:bg-indigo-700 transition animate-bounce"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                      <span>+{unseenCount} điểm mới</span>
-                      <span className="text-indigo-200">|</span>
-                      <span>Về mới nhất</span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                /* CHẾ ĐỘ TÁCH TẦNG (FACETED SUBPLOTS VIEW) */
-                <div className="space-y-3 bg-white p-2 rounded-xl" onWheel={handleWheel}>
-                  {/* Tầng 1: Observed */}
-                  {filters.observed && (
-                    <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/40">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-800 mb-1">
-                        <span>1. Dữ liệu thực nghiệm (Observed)</span>
-                        <span className="font-mono text-slate-600">
-                          {hoveredPoint?.observed != null ? `${hoveredPoint.observed} DU` : 'Tổng hòa 3 thành phần'}
-                        </span>
-                      </div>
-                      <div className="h-16">
-                        <svg viewBox={`0 0 ${svgWidth} 64`} className="w-full h-full">
-                          {observedSegments.map((seg, sIdx) => (
-                            <polyline
-                              key={`fac-obs-${sIdx}`}
-                              fill="none"
-                              stroke="#334155"
-                              strokeWidth="2"
-                              strokeDasharray="4 3"
-                              points={seg.join(' ')}
-                            />
-                          ))}
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tầng 2: Trend */}
-                  {filters.trend && (
-                    <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50/30">
-                      <div className="flex justify-between items-center text-xs font-bold text-indigo-900 mb-1">
-                        <span>2. Xu hướng dài hạn (Trend Component)</span>
-                        <span className="font-mono text-indigo-700">
-                          {hoveredPoint?.trend != null ? `${hoveredPoint.trend} DU` : 'Đường biến động vĩ mô'}
-                        </span>
-                      </div>
-                      <div className="h-16">
-                        <svg viewBox={`0 0 ${svgWidth} 64`} className="w-full h-full">
-                          {trendSegments.map((seg, sIdx) => (
-                            <polyline
-                              key={`fac-trend-${sIdx}`}
-                              fill="none"
-                              stroke="#4F46E5"
-                              strokeWidth="2.5"
-                              points={seg.join(' ')}
-                            />
-                          ))}
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tầng 3: Seasonal */}
-                  {filters.seasonal && (
-                    <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/30">
-                      <div className="flex justify-between items-center text-xs font-bold text-amber-900 mb-1">
-                        <span>3. Chu kỳ mùa vụ (Seasonal Component)</span>
-                        <span className="font-mono text-amber-700">
-                          {hoveredPoint?.seasonal != null
-                            ? `${hoveredPoint.seasonal > 0 ? '+' : ''}${hoveredPoint.seasonal} DU`
-                            : 'Chu kỳ bức xạ mặt trời'}
-                        </span>
-                      </div>
-                      <div className="h-16">
-                        <svg viewBox={`0 0 ${svgWidth} 64`} className="w-full h-full">
-                          {seasonalSegments.map((seg, sIdx) => (
-                            <polyline
-                              key={`fac-seas-${sIdx}`}
-                              fill="none"
-                              stroke="#EA580C"
-                              strokeWidth="2"
-                              points={seg.join(' ')}
-                            />
-                          ))}
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tầng 4: Residual */}
-                  {filters.residual && (
-                    <div className="p-3 rounded-xl border border-teal-200 bg-teal-50/30">
-                      <div className="flex justify-between items-center text-xs font-bold text-teal-900 mb-1">
-                        <span>4. Phần dư ngẫu nhiên (Residual Component)</span>
-                        <span className="font-mono text-teal-700">
-                          {hoveredPoint?.residual != null
-                            ? `${hoveredPoint.residual > 0 ? '+' : ''}${hoveredPoint.residual} DU`
-                            : 'Nhiễu khí quyển'}
-                        </span>
-                      </div>
-                      <div className="h-16">
-                        <svg viewBox={`0 0 ${svgWidth} 64`} className="w-full h-full">
-                          {residualSegments.map((seg, sIdx) => (
-                            <polyline
-                              key={`fac-res-${sIdx}`}
-                              fill="none"
-                              stroke="#0D9488"
-                              strokeWidth="1.8"
-                              points={seg.join(' ')}
-                            />
-                          ))}
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Trục X chung đặt ở đáy của chế độ tách tầng */}
-                  <div className="pt-1">
-                    <svg viewBox={`0 0 ${svgWidth} 60`} className="w-full h-14">
-                      <TwoRowXAxis
-                        tStart={tStart}
-                        tEnd={tEnd}
-                        chartW={chartW}
-                        chartH={10}
-                        margin={{ ...margin, top: 5 }}
-                        svgWidth={svgWidth}
-                        getX={getX}
-                      />
-                    </svg>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── THANH CHỈ BÁO GIÁ TRỊ TẠI ĐIỂM HOVER (TOOLTIP PANEL) ── */}
-            <div className="mt-3.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            {/* ── THANH CHỈ BÁO GIÁ TRỊ TẠI ĐIỂM HOVER (TOOLTIP PANEL - CỐ ĐỊNH CHIỀU CAO) ── */}
+            <div className="mt-3.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs min-h-[76px] flex flex-col justify-center">
               {hoveredPoint ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-md bg-white border border-slate-200 font-mono font-bold text-slate-800 text-[11px]">
-                      {utcFullTooltipFormatter.format(new Date(hoveredPoint.time))} UTC
+                <div className="flex flex-col gap-2">
+                  {/* Hàng 1: Timestamp & Số điểm hiển thị */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono font-bold text-slate-800 text-[11px]">
+                        {utcFullTooltipFormatter.format(new Date(hoveredPoint.time))} UTC
+                      </span>
+                      <span className="text-slate-500 font-medium">Chi tiết phân rã:</span>
+                    </div>
+                    <span className="font-mono text-[11px] text-slate-400">
+                      {visiblePoints.length} / {points.length} điểm
                     </span>
-                    <span className="text-slate-500 font-medium">Chi tiết phân rã:</span>
                   </div>
 
-                  <div className="flex items-center gap-2.5 font-mono text-[11.5px] flex-wrap">
+                  {/* Hàng 2: 4 Badge chỉ số thực tế */}
+                  <div className="flex items-center gap-2 font-mono text-[11.5px] flex-wrap">
                     {filters.observed && hoveredPoint.observed != null && (
-                      <span className="flex items-center gap-1 text-slate-800 font-bold bg-white px-2 py-0.5 rounded border border-slate-200 shadow-xs">
-                        <span className="w-2 h-0.5 bg-slate-800 inline-block border-t border-dashed"></span>
+                      <span className="flex items-center gap-1.5 text-slate-800 font-bold bg-white px-2.5 py-0.5 rounded-md border border-slate-200 shadow-xs">
+                        <span className="w-2.5 h-0.5 bg-slate-800 inline-block border-t border-dashed"></span>
                         Thực đo: {hoveredPoint.observed} DU
                       </span>
                     )}
 
                     {filters.trend && hoveredPoint.trend != null && (
-                      <span className="flex items-center gap-1 text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 shadow-xs">
+                      <span className="flex items-center gap-1.5 text-indigo-700 font-bold bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-200 shadow-xs">
                         <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block"></span>
                         Xu hướng: {hoveredPoint.trend} DU
                       </span>
@@ -1433,7 +1229,7 @@ export default function TrendSeasonalCorrelation() {
 
                     {filters.seasonal && hoveredPoint.seasonal != null && (
                       <span
-                        className="flex items-center gap-1 text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shadow-xs"
+                        className="flex items-center gap-1.5 text-amber-800 font-bold bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-200 shadow-xs"
                         title="Biên độ mùa vụ gốc (đã căn chỉnh hiển thị chung trục)"
                       >
                         <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
@@ -1443,7 +1239,7 @@ export default function TrendSeasonalCorrelation() {
 
                     {filters.residual && hoveredPoint.residual != null && (
                       <span
-                        className="flex items-center gap-1 text-teal-800 font-bold bg-teal-50 px-2 py-0.5 rounded border border-teal-200 shadow-xs"
+                        className="flex items-center gap-1.5 text-teal-800 font-bold bg-teal-50 px-2.5 py-0.5 rounded-md border border-teal-200 shadow-xs"
                         title="Phần dư ngẫu nhiên gốc (đã căn chỉnh hiển thị chung trục)"
                       >
                         <span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>
@@ -1453,14 +1249,42 @@ export default function TrendSeasonalCorrelation() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between text-slate-500">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <Info className="w-3.5 h-3.5 text-sky-600" />
-                    <span>Rê chuột lên biểu đồ để xem chi tiết mốc thời gian thực đo. Dùng con lăn chuột để Zoom.</span>
+                /* SKELETON PLACEHOLDER GIỮ NGUYÊN CẤU TRÚC & CHIỀU CAO KHI KHÔNG HOVER */
+                <div className="flex flex-col gap-2 select-none">
+                  {/* Hàng 1 Skeleton */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-200/70 border border-slate-200 font-mono text-transparent text-[11px] w-44 inline-block">
+                        00:00:00 Thứ Hai, 00/00/2026 UTC
+                      </span>
+                      <span className="text-slate-400 text-[11px]">
+                        Rê chuột lên biểu đồ để xem chi tiết
+                      </span>
+                    </div>
+                    <span className="font-mono text-[11px] text-slate-400">
+                      {visiblePoints.length} / {points.length} điểm
+                    </span>
                   </div>
-                  <span className="font-mono text-[11px] text-slate-400">
-                    Hiển thị: {visiblePoints.length} / {points.length} điểm
-                  </span>
+
+                  {/* Hàng 2 Skeleton: 4 ô badge giữ chỗ */}
+                  <div className="flex items-center gap-2 font-mono text-[11.5px] flex-wrap">
+                    <span className="flex items-center gap-1.5 text-slate-400 bg-white/70 px-2.5 py-0.5 rounded-md border border-slate-200/80">
+                      <span className="w-2.5 h-0.5 bg-slate-300 inline-block border-t border-dashed"></span>
+                      Thực đo: — DU
+                    </span>
+                    <span className="flex items-center gap-1.5 text-indigo-400/80 bg-indigo-50/40 px-2.5 py-0.5 rounded-md border border-indigo-100">
+                      <span className="w-2 h-2 rounded-full bg-indigo-300 inline-block"></span>
+                      Xu hướng: — DU
+                    </span>
+                    <span className="flex items-center gap-1.5 text-amber-500/80 bg-amber-50/40 px-2.5 py-0.5 rounded-md border border-amber-100">
+                      <span className="w-2 h-2 rounded-full bg-amber-300 inline-block"></span>
+                      Mùa vụ gốc: — DU
+                    </span>
+                    <span className="flex items-center gap-1.5 text-teal-500/80 bg-teal-50/40 px-2.5 py-0.5 rounded-md border border-teal-100">
+                      <span className="w-2 h-2 rounded-full bg-teal-300 inline-block"></span>
+                      Phần dư gốc: — DU
+                    </span>
+                  </div>
                 </div>
               )}
             </div>

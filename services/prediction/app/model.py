@@ -129,10 +129,13 @@ class OzonePredictionModel:
     def forecast_tomorrow_and_cache(self) -> Dict[str, Any]:
         """
         Tạo thẻ dự báo tổng hợp cho ngày mai gửi vào Database API cache:
-        Bao gồm dự báo cho các trạm quan trắc trọng điểm: Việt Nam/Đông Nam Á, Nam Cực, Toàn cầu.
+        - 2 thẻ to chính (Regression & Classification): Tính trung bình cộng của lưới mẫu đại diện
+          phủ kín toàn bộ vùng nghiên cứu Bán đảo Nam Cực (-70° đến -63° vĩ Nam, -75° đến -55° kinh Tây).
+        - Giữ nguyên danh sách các trạm khu vực trong regional_forecasts theo yêu cầu.
         """
         tomorrow = datetime.utcnow() + timedelta(days=1)
 
+        # 1. Dự báo cho các trạm quan trắc khu vực (giữ nguyên regional_forecasts)
         locs = [
             {"name": "Toàn cầu (Trung bình)", "lat": 10.0, "lon": 105.0},
             {"name": "Khu vực Đông Nam Á (Việt Nam)", "lat": 14.05, "lon": 108.27},
@@ -145,16 +148,57 @@ class OzonePredictionModel:
             res["location_name"] = loc["name"]
             forecasts.append(res)
 
-        primary = forecasts[1]  # Trọng tâm: Việt Nam / Đông Nam Á
+        # 2. Tạo lưới mẫu đại diện phủ kín toàn bộ Bán đảo Nam Cực (-70° đến -63° Lat, -75° đến -55° Lon)
+        # Lưới bước nhảy 1.0° để dự báo nhanh và đại diện toàn vùng
+        peninsula_lats = np.arange(-70.0, -62.5, 1.0)
+        peninsula_lons = np.arange(-75.0, -54.5, 2.0)
+
+        grid_points = []
+        for plat in peninsula_lats:
+            for plon in peninsula_lons:
+                refl = float(15.0 + 35.0 * (abs(plat) / 70.0) ** 2)
+                sza = float(15.0 + 60.0 * (abs(plat) / 70.0))
+                grid_points.append({
+                    "lat": float(plat),
+                    "lon": float(plon),
+                    "refl": refl,
+                    "sza": sza,
+                    "timestamp": tomorrow
+                })
+
+        grid_df = pd.DataFrame(grid_points)
+        grid_X = FeatureEngineer.extract_features(grid_df)
+
+        # Chạy dự báo cho toàn bộ các điểm trên Bán đảo Nam Cực
+        grid_pred_du = self.reg_model.predict(grid_X)
+        grid_clf_probs = self.clf_model.predict_proba(grid_X)
+
+        # Tính trung bình cộng nồng độ Ozone (DU) của toàn bộ vùng Bán đảo Nam Cực
+        mean_peninsula_du = round(float(np.mean(grid_pred_du)), 2)
+
+        # Phân loại rủi ro tổng thể dựa trên phân phối xác suất và nồng độ trung bình
+        avg_probs = np.mean(grid_clf_probs, axis=0)
+        clf_classes = getattr(self.clf_model.model, "classes_", None)
+        if clf_classes is not None and len(clf_classes) == len(avg_probs):
+            best_idx = int(np.argmax(avg_probs))
+            status_label = str(clf_classes[best_idx])
+            confidence = float(avg_probs[best_idx])
+        else:
+            status_label = ModelTrainer.assign_status_label(mean_peninsula_du)
+            confidence = float(np.max(avg_probs))
+
+        # Phân tích rủi ro và khuyến cáo cho toàn vùng Bán đảo Nam Cực
+        risk_profile = AdvisoryEngine.get_risk_profile(status_label, mean_peninsula_du)
+
         payload = {
             "target_date": tomorrow.strftime("%d/%m/%Y"),
             "target_datetime": tomorrow.isoformat(),
-            "predicted_ozone_du": primary["predicted_ozone_du"],
-            "status_label": primary["status_label"],
-            "risk_assessment": primary["risk_assessment"],
-            "confidence_percent": primary["confidence_percent"],
-            "badge_color": primary["badge_color"],
-            "health_advisory": primary["health_advisory"],
+            "predicted_ozone_du": mean_peninsula_du,
+            "status_label": status_label,
+            "risk_assessment": risk_profile["risk_assessment"],
+            "confidence_percent": round(confidence * 100, 1),
+            "badge_color": risk_profile["badge_color"],
+            "health_advisory": risk_profile["health_advisory"],
             "regional_forecasts": forecasts,
             "updated_at": datetime.utcnow().isoformat()
         }
