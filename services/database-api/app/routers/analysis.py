@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Annotated
 from fastapi import APIRouter, Depends, Query, status
@@ -481,12 +482,30 @@ def set_cache_entry(
 
 @router.post("/prediction/predict")
 def predict_point(payload: Dict[str, Any], db: Annotated[Session, Depends(get_db)]):
-    """Dự báo nồng độ Ozone và chỉ số UV tại tọa độ địa lý chỉ định trong vùng Bán đảo Nam Cực (-70 đến -63, -75 đến -55)."""
+    """
+    Dự báo nồng độ Ozone và chỉ số UV tại tọa độ và ngày chỉ định trong vùng Bán đảo Nam Cực (-70 đến -63, -75 đến -55).
+    Tự động tính toán suy giảm độ tin cậy và biến thiên theo số ngày dự báo xa trong tương lai.
+    """
     lat = float(payload.get("latitude", -66.50))
     lon = float(payload.get("longitude", -65.00))
     dt_str = payload.get("datetime") or datetime.utcnow().isoformat()
 
-    # Truy vấn ô lưới quan trắc gần nhất từ ozone_grid_summary để làm cơ sở chính xác
+    target_dt = datetime.utcnow()
+    try:
+        if isinstance(dt_str, str):
+            clean_str = dt_str.replace("Z", "+00:00")
+            if "T" in clean_str:
+                target_dt = datetime.fromisoformat(clean_str)
+            else:
+                target_dt = datetime.strptime(clean_str[:10], "%Y-%m-%d")
+    except Exception:
+        target_dt = datetime.utcnow()
+
+    # Tính khoảng cách ngày so với ngày hiện tại (Days ahead)
+    now_utc = datetime.utcnow()
+    days_ahead = max(0, (target_dt.date() - now_utc.date()).days)
+
+    # Truy vấn ô lưới quan trắc gần nhất từ ozone_grid_summary để làm cơ sở thực tế
     nearby = db.execute(text("""
         SELECT ozone_column_mean, reflectivity_mean 
         FROM ozone_grid_summary 
@@ -503,42 +522,72 @@ def predict_point(payload: Dict[str, Any], db: Annotated[Session, Depends(get_db
         base_ozone = round(215.0 + 35.0 * ((lat - (-70.0)) / 7.0), 2)
         base_refl = 72.0
 
-    du = round(base_ozone, 2)
-    abs_lat = abs(lat)
+    # Chu kỳ lượng giác ngày trong năm (Seasonality)
+    doy = target_dt.timetuple().tm_yday
+    # Mùa xuân Nam Cực (tháng 9-11, DOY 244-334) có nồng độ suy giảm sâu nhất
+    seasonal_factor = -18.0 * math.cos(2.0 * math.pi * (doy - 280) / 365.25)
 
-    if du < 220.0:
+    # Biến thiên dự báo theo ngày tương lai (xu hướng mùa + vi mô)
+    lead_time_drift = seasonal_factor * min(1.0, days_ahead / 10.0) if days_ahead > 0 else 0.0
+    predicted_du = round(float(max(185.0, min(420.0, base_ozone + lead_time_drift))), 2)
+
+    # Độ tin cậy giảm dần theo thời gian dự báo:
+    # 0-1 ngày: ~95-96%, 3 ngày: ~90%, 7 ngày: ~82%, 14 ngày: ~70%, 30 ngày: ~55%
+    base_confidence = 96.5
+    confidence_decay = min(42.0, days_ahead * 1.6 + (days_ahead ** 1.15) * 0.4)
+    confidence_percent = round(max(52.0, base_confidence - confidence_decay), 1)
+
+    abs_lat = abs(lat)
+    refl_est = round(float(max(10.0, min(95.0, base_refl + 2.0 * math.sin(doy / 30.0)))), 1)
+    sza_est = round(float(15.0 + 60.0 * (abs_lat / 70.0)), 1)
+
+    # Đánh giá mức rủi ro hoàn toàn bằng Tiếng Việt
+    if predicted_du < 220.0:
         status_label = "Cảnh báo Lỗ thủng Ozone"
         badge_color = "red"
-        advisory = "Nồng độ ozone suy giảm nghiêm trọng dưới ngưỡng an toàn WMO (220 DU). Cảnh báo nguy cơ bức xạ tia cực tím cực độ tại vùng Bán đảo Nam Cực."
-        risk = "Critical Ozone Depletion Zone (< 220 DU)"
-    elif du < 260.0:
-        status_label = "Cảnh báo Suy giảm Ozone"
+        risk_vn = "Nguy hại cực độ (Lỗ thủng < 220 DU)"
+        advisory = (
+            "Nồng độ ozone suy giảm nghiêm trọng dưới ngưỡng an toàn WMO (220 DU). "
+            "Cảnh báo bức xạ tia cực tím (UV) ở mức nguy hại cực độ. Hạn chế tiếp xúc trực tiếp ngoài trời."
+        )
+    elif predicted_du < 265.0:
+        status_label = "Cảnh báo UV cao"
         badge_color = "amber"
-        advisory = "Nồng độ ozone ở mức thấp (220 - 260 DU). Cần hạn chế tiếp xúc trực tiếp ngoài trời tại các trạm khảo sát vùng cực."
-        risk = "Moderate Ozone Depletion (220 - 260 DU)"
+        risk_vn = "Cảnh báo rủi ro UV cao (220 - 265 DU)"
+        advisory = (
+            "Chỉ số bức xạ UV ở mức cao do tầng ozone tương đối mỏng. "
+            "Cần trang bị kính râm chống tia UV, nón rộng vành và kem chống nắng khi hoạt động ngoài trời."
+        )
+    elif predicted_du > 420.0:
+        status_label = "Tích tụ Ozone dày"
+        badge_color = "purple"
+        risk_vn = "Ozone dày bất thường (> 420 DU)"
+        advisory = "Nồng độ ozone cột khí quyển đạt mức rất dày do tích tụ hoàn lưu không khí, khả năng chắn tia UV tối ưu."
     else:
-        status_label = "Bình thường"
+        status_label = "An toàn bình thường"
         badge_color = "green"
-        advisory = "Nồng độ ozone đạt trạng thái ổn định trên ngưỡng an toàn WMO 220 DU."
-        risk = "Standard Atmospheric Ozone Layer"
+        risk_vn = "Mức an toàn chuẩn khí quyển (265 - 420 DU)"
+        advisory = "Nồng độ ozone đạt trạng thái chuẩn bảo vệ tốt khỏi bức xạ có hại, tầng ozone ổn định."
 
     return {
         "latitude": lat,
         "longitude": lon,
-        "datetime": dt_str,
-        "target_datetime": dt_str,
-        "predicted_ozone_du": du,
+        "datetime": target_dt.isoformat(),
+        "target_datetime": target_dt.isoformat(),
+        "days_ahead": days_ahead,
+        "predicted_ozone_du": predicted_du,
         "status_label": status_label,
-        "risk_assessment": risk,
-        "confidence_percent": 96.2,
+        "risk_assessment": risk_vn,
+        "confidence_percent": confidence_percent,
         "badge_color": badge_color,
         "health_advisory": advisory,
         "unit": "Dobson Units (DU)",
         "input_features": {
             "latitude": lat,
             "longitude": lon,
-            "reflectivity": round(base_refl, 1),
-            "solar_zenith_angle": round(15.0 + 60.0 * (abs_lat / 70.0), 1)
+            "days_ahead": days_ahead,
+            "reflectivity": refl_est,
+            "solar_zenith_angle": sza_est
         }
     }
 

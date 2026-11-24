@@ -1,204 +1,192 @@
-# 🌍 OzoneCast — Hệ Thống Giám Sát & Dự Đoán Tầng Ozone Vệ Tinh NASA
+# 🌍 OzoneCast — Hệ Thống Giám Sát & Dự Báo Tầng Ozone Vệ Tinh NASA
 
-Hệ thống kiến trúc Microservice thu thập dữ liệu vệ tinh NASA (OMI/Aura), lưu trữ cơ sở dữ liệu thời gian thực, tự động phân tích chuỗi thời gian, phân cụm không gian và dự đoán suy giảm tầng ozone tại khu vực toàn cầu và Bán đảo Nam Cực.
+Hệ thống kiến trúc **Microservices phân tán** thu thập dữ liệu vệ tinh NASA Aura OMI (định dạng HDF5/HE5), lưu trữ và xử lý thời gian thực trên PostgreSQL, tự động phân tích chuỗi thời gian, phân cụm không gian và dự báo nồng độ Ozone kèm cảnh báo bức xạ cực tím (UV) trọng tâm tại **Bán đảo Nam Cực**.
 
 ---
 
-## 🏗️ 1. Sơ Đồ Khối Kiến Trúc Hệ Thống
+## 🏗️ 1. Sơ Đồ Kiến Trúc Hệ Thống (Microservices Architecture)
 
-Kiến trúc hệ thống được thiết kế theo mô hình Microservice phân tán, mỗi khối chạy độc lập trong một container hoặc terminal riêng biệt:
+Hệ thống bao gồm **7 dịch vụ độc lập**, giao tiếp qua mạng nội bộ Docker và Cổng API trung tâm:
 
 ```mermaid
 flowchart LR
-    DS["🟡 Data Source\n(NASA EOSDIS / OMI-Aura)\n- Dữ liệu theo thời gian\n- Có cập nhật"]
-    DI["🔵 Data Ingestion\n(5 phút lấy dữ liệu 1 lần)"]
-    DB[("🟢 Database\n(PostgreSQL 16)")]
-    DAPI["🟢 Database API\n(FastAPI Gateway)"]
-    FE["🟣 Front End\n(React + Tailwind\nGiao diện thẩm mỹ)"]
+    NASA["🟡 NASA Earthdata\n(Aura OMI OMTO3/OMTO3G)\nQuét vệ tinh liên tục"]
+    INGEST["🔵 data-ingestion (:8002)\n- Tải HDF5/HE5\n- Lọc vĩ độ Nam Cực\n- Chu kỳ: 5 phút"]
+    DB[("🟢 PostgreSQL 16 (:5432)\n- raw_measurements\n- ozone_grid_summary\n- cluster_results\n- cache")]
+    DAPI["🟢 database-api (:8000)\nFastAPI Gateway\n(Sole Data Gateway + WebSocket)"]
+    FE["🟣 frontend (:3000)\nReact + Vite + Tailwind CSS\nDashboard Khí tượng"]
 
-    subgraph BS ["🔷 Backend Services"]
+    subgraph WORKERS ["🔷 Background AI & Analytics Daemons"]
         direction TB
-        DA["Data Analysis\n(5 phút chạy 1 lần)"]
-        CL["Clustering\n(1 ngày chạy 1 lần)"]
-        PR["Prediction\n(5 phút chạy 1 lần)"]
+        DA["data-analysis\n- Spatial Binning (0.5°×0.5°)\n- STL Decomposition\n- Pearson 6x6 (Mỗi 5 phút)"]
+        CL["clustering\n- K-Means & DBSCAN\n- Sắp xếp thứ tự Ozone\n- Đánh giá cụm (Mỗi 24h)"]
+        PR["prediction\n- Random Forest kép\n- Hồi quy DU & Phân loại UV\n- Dự báo ngày mai (Mỗi 5 phút)"]
     end
 
-    DS <-->|Tải file HDF5/HE5| DI
-    DI -->|Ghi dữ liệu 10 trường| DB
-    DB <-->|Đọc & Ghi kết quả| DA
-    DB <-->|Đọc & Ghi cụm| CL
-    DB <-->|Đọc train & Ghi dự báo| PR
+    NASA -->|Tải file HDF5/HE5 qua curl| INGEST
+    INGEST -->|Ghi dữ liệu thô & file granules| DB
+    DB <-->|Đọc raw & Ghi ô lưới, tương quan| DA
+    DB <-->|Đọc ô lưới & Ghi kết quả 4 cụm| CL
+    DB <-->|Đọc ô lưới & Huấn luyện/Cập nhật cache| PR
     DB <-->|SQLAlchemy ORM| DAPI
-    FE -->|REST API /api/*| DAPI
+    DAPI <-->|REST API & WebSocket| FE
 ```
 
-### Luồng gọi và tương tác giữa các service:
-1. **Data Source ➔ Data Ingestion (5 phút / lần):**
-   - Lấy file dữ liệu vệ tinh từ URL NASA Earthdata (định dạng HDF5/HE5 như `OMI-Aura_L2G-OMTO3G...he5`).
-   - Dùng thư viện `h5py` đọc và trích xuất **10 trường dữ liệu khí quyển & bề mặt**.
-2. **Data Ingestion ➔ Database:**
-   - Kết nối trực tiếp PostgreSQL và ghi các điểm đo vào bảng `raw_measurements` (kèm thông tin file vào `granules`).
-3. **Backend Services ⮂ Database:**
-   - **Data Analysis (mỗi 5 phút):** Đọc dữ liệu từ DB ➔ làm sạch, binning lưới tọa độ 0.5°×0.5°, tính chuỗi thời gian (Ngày/Tuần/Tháng), tách Trend/Seasonal, tính ma trận tương quan 6x6 ➔ ghi kết quả vào DB.
-   - **Prediction (mỗi 5 phút):** Đọc dữ liệu DB ➔ huấn luyện mô hình RandomForest (Hồi quy DU + Phân loại cảnh báo nguy cơ suy giảm ozone) ➔ ghi dự báo ngày mai vào DB.
-   - **Clustering (mỗi 1 ngày):** Đọc dữ liệu ➔ chạy phân cụm K-Means không gian (Latitude, Longitude, Ozone, Reflectivity) ➔ ghi thông tin đặc trưng từng cụm vào DB.
-4. **Database ➔ Database API ➔ Front End:**
-   - **Database API:** Đóng vai trò là cổng truy xuất duy nhất (Read Gateway) phục vụ client, không chứa logic nặng.
-   - **Front End:** Gọi API lấy dữ liệu và hiển thị trực quan bản đồ nhiệt (Ozone Map), thẻ cảnh báo ngày mai, biểu đồ tương quan và phân cụm.
+### Chi tiết các Service và Cổng dịch vụ:
+
+| Tên Service | Container Name | Cổng Host | Vai trò & Nhiệm vụ chính |
+| :--- | :--- | :---: | :--- |
+| **`frontend`** | `ozone-frontend` | **`3000`** | Giao diện Web Dashboard: Bản đồ nhiệt Ozone Map, Biểu đồ quan trắc & dự báo 7 ngày, Phân cụm K-Means, Phân rã chuỗi thời gian. |
+| **`database-api`** | `ozone-database-api` | **`8000`** | Cổng giao tiếp REST API trung tâm (FastAPI + Swagger UI + WebSocket streaming). |
+| **`postgres`** | `ozone-postgres` | **`5432`** | Cơ sở dữ liệu quan hệ PostgreSQL 16 lưu trữ toàn bộ dữ liệu quan trắc và cache phân tích. |
+| **`data-ingestion`** | `ozone-data-ingestion` | **`8002`** | Scheduler tự động quét NASA CMR API, tải file HDF5/HE5, giải nén và lọc lát cắt tọa độ Nam Cực (5 phút/lần). |
+| **`data-analysis`** | `ozone-data-analysis` | *(Nội bộ)* | Background Daemon: Gom ô lưới không gian (0.5°×0.5°), phân tích tương quan 6 biến khí quyển, phân tách Trend/Seasonal (5 phút/lần). |
+| **`prediction`** | `ozone-prediction` | *(Nội bộ)* | Background Daemon: Huấn luyện và chạy mô hình Học máy Random Forest kép (Hồi quy nồng độ DU + Phân loại rủi ro UV theo chuẩn WMO) (5 phút/lần). |
+| **`clustering`** | `ozone-clustering` | *(Nội bộ)* | Background Daemon: Khai phá dữ liệu đa biến K-Means / DBSCAN, tự động sắp xếp thứ tự nhãn cụm theo nồng độ Ozone tăng dần (24h/lần). |
 
 ---
 
-## 📊 2. Chi Tiết Các Trường Dữ Liệu Được Trích Xuất
+## 🛰️ 2. Phạm Vi Không Gian & Đặc Trưng Dữ Liệu Vệ Tinh
 
-Hệ thống sử dụng thư viện `h5py` trích xuất từ file HDF5/HE5 chuẩn NASA gồm 2 nhóm trường:
+Dự án tập trung nghiên cứu chuyên sâu về **Lỗ thủng tầng Ozone Nam Cực (Antarctic Ozone Hole)**:
 
-### 🔹 Nhóm 1: Bắt buộc (6 trường)
-| Trường trong H5 | Cột CSDL | Kiểu dữ liệu | Mục đích sử dụng |
-|---|---|---|---|
-| **ColumnAmountO3** | `ozone_column_raw` | Float (DU) | **Biến chính** cần phân tích và dự đoán (Dobson Units). |
-| **Latitude** | `latitude` | Float (deg) | **Cắt vùng Bán đảo Nam Cực** (`[-70°, -63°]`), vẽ bản đồ không gian. |
-| **Longitude** | `longitude` | Float (deg) | Tọa độ kinh độ địa lý Bán đảo Nam Cực (`[-75°, -55°]`). |
-| **SecondsInDay** / **Time** | `seconds_in_day` / `time_raw` | Float (giây) | **Xác định thời điểm đo**: Số giây từ 00:00 UTC của ngày (dễ dùng vì chỉ cần cộng với ngày trong tên file). |
-| **QualityFlags** | `quality_flag` | Integer | **Lọc bỏ các điểm đo xấu** do lỗi thuật toán OMI. |
-| **GroundPixelQualityFlags** | `ground_pixel_quality_flag` | Integer | **Lọc thêm theo chất lượng pixel mặt đất** (mây che khuất, băng tuyết bề mặt). |
-
-### 🔹 Nhóm 2: Nên lấy thêm (4 trường)
-| Trường trong H5 | Cột CSDL | Kiểu dữ liệu | Lý do & Mục đích sử dụng |
-|---|---|---|---|
-| **SolarZenithAngle** | `solar_zenith_angle` | Float (deg) | Ở vùng cực, Mặt Trời thấp sát chân trời nên dữ liệu kém tin cậy. Dùng trường này để **loại các điểm có góc quá lớn** (thường bỏ khi vượt khoảng 84° đến 88°). |
-| **RadiativeCloudFraction** | `radiative_cloud_fraction` | Float (0.0–1.0) | Mây ảnh hưởng lớn đến độ chính xác ozone, dùng làm **feature quan trọng cho mô hình AI**. |
-| **CloudPressure** | `cloud_pressure` | Float (hPa) | **Bổ sung thông tin áp suất đỉnh mây**. |
-| **WaterFraction** / **LandWater** | `water_fraction` | Float (0.0–1.0) | **Phân biệt ô đất liền hay biển**, rất hữu ích cho vùng Bán đảo Nam Cực vì có cả băng, đất và nước. |
+* **Tọa độ khu vực nghiên cứu (Bán đảo Nam Cực):**
+  * **Vĩ độ (Latitude):** $-70.0^\circ\text{S}$ đến $-63.0^\circ\text{S}$
+  * **Kinh độ (Longitude):** $-75.0^\circ\text{W}$ đến $-55.0^\circ\text{W}$
+* **Sản phẩm dữ liệu NASA:**
+  * **OMTO3 (Level-2 Swath):** Dữ liệu vệt quét vệ tinh theo từng quỹ đạo bay thực tế.
+  * **OMTO3G (Level-2G Gridded):** Dữ liệu lưới toàn cầu gộp trong ngày.
+* **10 trường vật lý khí quyển được trích xuất từ file HDF5 (`h5py`):**
+  1. `ColumnAmountO3`: Nồng độ tầng Ozone cột khí quyển (Dobson Units - DU).
+  2. `Latitude`: Vĩ độ trắc địa.
+  3. `Longitude`: Kinh độ trắc địa.
+  4. `SecondsInDay` / `Time`: Mốc thời gian quan sát thực tế trong ngày.
+  5. `QualityFlags`: Cờ chất lượng thuật toán OMI.
+  6. `GroundPixelQualityFlags`: Chất lượng pixel mặt đất (băng tuyết, mây che phủ).
+  7. `SolarZenithAngle` (SZA): Góc thiên đỉnh mặt trời (lọc loại bỏ dữ liệu nhiễu vùng cực $> 84^\circ$).
+  8. `RadiativeCloudFraction`: Tỷ lệ che phủ của mây quang học.
+  9. `CloudPressure`: Áp suất đỉnh mây (hPa).
+  10. `Reflectivity331` / `UV Aerosol`: Độ phản xạ bề mặt băng tuyết và chỉ số sol khí.
 
 ---
 
-## 📁 3. Cấu Trúc Thư Mục Dự Án
+## ⚡ 3. Các Tính Năng Nổi Bật Trên Dashboard
 
+1. **Bản đồ Quan trắc Không gian (Ozone Map):**
+   * Hiển thị lưới trắc địa nhiệt với ngưỡng thủng Ozone $220\text{ DU}$.
+   * Tích hợp theo dõi tọa độ con trỏ chuột thời gian thực (hiển thị tọa độ Vĩ độ/Kinh độ chính xác khi rê chuột trên bản đồ).
+2. **Dự báo Học máy (Machine Learning Prediction):**
+   * Dự báo nồng độ Ozone trung bình toàn vùng Bán đảo Nam Cực vào ngày mai bằng mô hình **Random Forest Regressor** ($R^2 \approx 0.967, \text{MAE} \approx \pm 4.69\text{ DU}$).
+   * Đánh giá nguy cơ bức xạ UV theo chuẩn an toàn quốc tế WMO / WHO bằng **Random Forest Classifier**.
+   * Chức năng **Dự báo điểm theo ngày tùy chọn**: Cho phép chọn ngày tương lai bất kỳ (tích hợp chu kỳ mùa vụ khí quyển và cơ chế suy giảm độ tin cậy theo thời gian dự báo).
+   * **Biểu đồ chuỗi thời gian 7 ngày:** Hiển thị trực quan 7 ngày quan sát gần nhất nối tiếp điểm dự báo ngày mai, tự động tích hợp thanh cuộn ngang mượt mà khi dữ liệu vượt quá 7 ngày.
+3. **Phân cụm Không gian Đa biến (Spatial Clustering):**
+   * Phân chia 4 cụm khí quyển đặc trưng dựa trên: Vĩ độ, Kinh độ, Nồng độ Ozone và Độ phản xạ bề mặt.
+   * Tự động sắp xếp (re-index) nhãn cụm theo nồng độ Ozone tăng dần (Cụm 1: Nguy cơ suy giảm cao nhất $\rightarrow$ Cụm 4: Vùng Ozone dày an toàn).
+4. **Phân tích Chuỗi thời gian & Tương quan Khí quyển:**
+   * Tách thành phần xu hướng (Trend) và chu kỳ mùa vụ (Seasonal).
+   * Ma trận tương quan Pearson 6 biến khí quyển thời gian thực tính toán trực tiếp từ cơ sở dữ liệu.
+
+---
+
+## 🚀 4. Hướng Dẫn Cài Đặt & Khởi Chạy
+
+### Yêu cầu hệ thống:
+* **Docker** & **Docker Compose** (phiên bản v2.20 trở lên).
+* RAM tối thiểu: 4GB (Khuyến nghị 8GB).
+* Dung lượng ổ đĩa trống: ~5GB.
+
+---
+
+### Bước 1: Sao chép mã nguồn và cấu hình môi trường
+```bash
+git clone https://github.com/your-username/OzoneCast.git
+cd OzoneCast
+
+# Tạo file biến môi trường từ mẫu có sẵn
+cp .env.example .env
 ```
+*(Nếu muốn cào trực tiếp từ server NASA, điền thông tin tài khoản Earthdata vào `NASA_USERNAME` và `NASA_PASSWORD` trong file `.env`).*
+
+---
+
+### Bước 2: Khởi chạy toàn bộ hệ thống bằng Docker Compose
+
+Chỉ cần một câu lệnh duy nhất:
+```bash
+docker compose up -d --build
+```
+
+Hệ thống sẽ tự động tải image, build các microservices, khởi tạo bảng cơ sở dữ liệu PostgreSQL và kích hoạt các daemon chạy ngầm.
+
+---
+
+### Bước 3: Truy cập hệ thống
+
+* **Giao diện Web Dashboard:** [http://localhost:3000](http://localhost:3000)
+* **Tài liệu Swagger REST API:** [http://localhost:8000/docs](http://localhost:8000/docs)
+* **API Quản lý nạp dữ liệu vệ tinh:** [http://localhost:8002/docs](http://localhost:8002/docs)
+* **Kết nối PostgreSQL (DBeaver / pgAdmin):** `localhost:5432` | User: `postgres` | Password: `postgres` | DB: `ozone_db`
+
+---
+
+### Bước 4: Kiểm tra trạng thái và Logs dịch vụ
+
+* **Xem danh sách các containers đang chạy:**
+  ```bash
+  docker compose ps
+  ```
+* **Xem tiến trình nạp dữ liệu vệ tinh NASA:**
+  ```bash
+  docker logs -f ozone-data-ingestion --tail 50
+  ```
+* **Xem tiến trình dự báo máy học:**
+  ```bash
+  docker logs -f ozone-prediction --tail 50
+  ```
+* **Dừng toàn bộ hệ thống:**
+  ```bash
+  docker compose down
+  ```
+
+---
+
+## 🛠️ 5. Cấu Trúc Thư Mục Dự Án
+
+```text
 OzoneCast/
-├── docker-compose.yml              # Điều phối chạy toàn bộ hệ thống
-├── .env.example                    # Mẫu biến môi trường chung
+├── docker-compose.yml              # Cấu hình triển khai 7 microservices Docker
+├── .env.example                    # Cấu hình biến môi trường mẫu
 ├── db/
 │   └── init/
-│       └── 01_init.sql             # SQL khởi tạo bảng, index và câu lệnh query mẫu
+│       └── 01_init.sql             # Script khởi tạo cấu trúc bảng, khóa chính & chỉ mục
+├── frontend/                       # Microservice 1: Giao diện React + Vite + Tailwind
+│   ├── src/
+│   │   ├── components/             # OzoneMap, PredictionPanel, ClusteringPanel...
+│   │   ├── api/                    # Axios API Client kết nối Gateway 8000
+│   │   └── config/                 # Tọa độ giới hạn Bán đảo Nam Cực, bảng màu Ozone
+│   └── Dockerfile
 ├── services/
-│   ├── data-ingestion/             # Service 1: Tải file HDF5 & ghi DB
-│   │   ├── app/
-│   │   │   ├── main.py             # Entrypoint & Scheduler 5 phút
-│   │   │   ├── ingestion_service.py# Đọc H5py 10 trường & ingest URL
-│   │   │   ├── db.py               # Kết nối PostgreSQL có retry
-│   │   │   ├── nasa_client.py      # Tải file qua curl
-│   │   │   └── mock_granule.py     # Giả lập file .he5 đủ 10 trường
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   ├── README.md               # Hướng dẫn chi tiết chạy riêng data-ingestion
-│   │   └── .env.example
-│   ├── database-api/               # Service 2: Cung cấp REST API (FastAPI)
-│   │   ├── app/
-│   │   │   ├── main.py             # Router REST endpoints
-│   │   │   ├── database.py         # SQLAlchemy engine
-│   │   │   ├── models.py           # ORM Model 10 trường
-│   │   │   └── schemas.py          # Pydantic Schemas
-│   │   ├── Dockerfile
-│   │   ├── requirements.txt
-│   │   └── .env.example
-│   └── backend-services/           # Service 3: Gộp 3 tác vụ AI / Phân tích
-│       ├── app/
-│       │   ├── main.py             # APScheduler chạy 3 jobs
-│       │   ├── data_analysis/      # Job 1: Phân tích Timeseries, Trend, Tương quan (5 min)
-│       │   ├── clustering/         # Job 2: K-Means phân cụm không gian (1 day)
-│       │   └── prediction/         # Job 3: Huấn luyện & dự báo ngày mai (5 min)
-│       ├── Dockerfile
-│       ├── requirements.txt
-│       └── .env.example
-└── frontend/                       # Front End: React + Vite + Tailwind CSS
+│   ├── database-api/               # Microservice 2: FastAPI Gateway (Cổng dữ liệu duy nhất)
+│   │   ├── app/routers/            # Endpoints: raw data, grid summary, clusters, predictions
+│   │   └── Dockerfile
+│   ├── data-ingestion/             # Microservice 3: Worker nạp file HDF5/HE5 NASA
+│   │   ├── app/                    # Module đọc H5py, cào CMR API, kiểm tra tọa độ
+│   │   ├── seed/urls_seed.txt      # Danh sách URL vệ tinh định tuyến sẵn
+│   │   └── Dockerfile
+│   ├── data-analysis/              # Microservice 4: Background daemon phân tích dữ liệu
+│   │   └── Dockerfile
+│   ├── prediction/                 # Microservice 5: Background daemon Học máy Random Forest
+│   │   ├── app/                    # Regressor, Classifier, Advisory Engine, Trainer
+│   │   └── Dockerfile
+│   └── clustering/                 # Microservice 6: Background daemon phân cụm K-Means/DBSCAN
+│       ├── app/                    # Tiền xử lý ma trận, thuật toán cụm, profiler nhãn
+│       └── Dockerfile
+└── README.md                       # Tài liệu hướng dẫn dự án
 ```
 
 ---
 
-## 🚀 4. Hướng Dẫn Khởi Chạy
-
-### Cách 1: Chạy toàn bộ hệ thống bằng Docker Compose (Khuyên dùng)
-
-1. **Chuẩn bị cấu hình:**
-   ```bash
-   cp .env.example .env
-   ```
-   *(Điền `NASA_USERNAME` và `NASA_PASSWORD` nếu có).*
-
-2. **Khởi chạy tất cả containers:**
-   ```bash
-   docker compose up --build -d
-   ```
-
-3. **Theo dõi logs của từng service:**
-   ```bash
-   docker compose logs -f data-ingestion
-   docker compose logs -f backend-services
-   docker compose logs -f database-api
-   ```
-
----
-
-### Cách 2: Chạy riêng từng Service ở mỗi Terminal (Local Development)
-
-Đúng theo ghi chú trên sơ đồ khối: *"Mỗi khối trong này được chạy ở một terminal, như một service độc lập"*.
-
-#### Terminal 1: Khởi động Database (PostgreSQL 16)
-```bash
-docker run -d --name ozone-postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ozone_db -v "%cd%/db/init:/docker-entrypoint-initdb.d" postgres:16
-```
-
-#### Terminal 2: Chạy Data Ingestion (Port 8002)
-```bash
-cd services/data-ingestion
-pip install -r requirements.txt
-uvicorn app.main:app --port 8002 --reload
-```
-
-#### Terminal 3: Chạy Database API (Port 8000)
-```bash
-cd services/database-api
-pip install -r requirements.txt
-uvicorn app.main:app --port 8000 --reload
-```
-
-#### Terminal 4: Chạy Backend Services (Analysis + Clustering + Prediction)
-```bash
-cd services/backend-services
-pip install -r requirements.txt
-python -m app.main
-```
-
-#### Terminal 5: Chạy Front End (Port 3000 hoặc 5173)
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
----
-
-## 🌐 5. Danh Sách URL & Endpoint Kiểm Tra
-
-| Service | Địa chỉ | Mô tả |
-|---|---|---|
-| **Front End** | `http://localhost:3000` | Giao diện Dashboard, bản đồ nhiệt, biểu đồ phân tích |
-| **Database API Docs** | `http://localhost:8000/docs` | Swagger UI tra cứu toàn bộ REST API |
-| **API Raw Data** | `http://localhost:8000/api/data` | Lấy dữ liệu 10 trường gốc (hỗ trợ lọc Bán đảo Nam Cực) |
-| **Data Ingestion API** | `http://localhost:8002/docs` | Swagger UI trigger nạp dữ liệu thủ công |
-
-### 🧪 Câu lệnh kiểm tra & nạp URL:
-
-```bash
-# 1. Nạp file từ đường dẫn cụ thể (URL NASA OMTO3G):
-curl -X POST http://localhost:8002/api/ingest/url \
-  -H "Content-Type: application/json" \
-  -d '{"file_url": "https://omisips1.omisips.eosdis.nasa.gov/data/10da43cd73977b549e32cd346b9f2a2f/OMI-Aura_L2G-OMTO3G_2026m1116_v004-2026m1117t052851.he5"}'
-
-# 2. Nạp dữ liệu giả lập Mock (Offline):
-curl -X POST http://localhost:8002/api/ingest/mock
-
-# 3. Lọc dữ liệu Bán đảo Nam Cực qua Database API:
-curl "http://localhost:8000/api/data?min_lat=-90&max_lat=-55&max_sza=84&valid_only=true&limit=10"
-```
+## 📜 6. Giấy Phép & Nguồn Dữ Liệu
+* Dữ liệu quan trắc tầng Ozone được cung cấp bởi **NASA Earth Science Data and Information System (ESDIS)** / **Aura Ozone Monitoring Instrument (OMI)**.
+* Dự án phục vụ mục đích nghiên cứu học thuật và phi thương mại.

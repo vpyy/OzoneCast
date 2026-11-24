@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   BrainCircuit,
   RefreshCw,
@@ -7,12 +7,10 @@ import {
   CheckCircle,
   AlertTriangle,
   AlertOctagon,
+  AlertCircle,
   TrendingUp,
-  Activity,
   Info,
   Clock,
-  Sliders,
-  ShieldAlert
 } from 'lucide-react';
 import { api } from '../api/apiClient';
 import { C, F, panelStyle, labelStyle, monoStyle, inputStyle, inputLabelStyle, btnPrimary, btnSecondary } from '../theme';
@@ -38,6 +36,16 @@ function StatusIcon({ color, size = 14 }) {
   return <CheckCircle size={size} strokeWidth={1.75} style={{ color: c }} />;
 }
 
+// Trả về ngày mai theo giờ địa phương, định dạng YYYY-MM-DD cho <input type="date">
+function getTomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function PredictionPanel() {
   const [predictionsData, setPredictionsData] = useState(null);
   const [loadingData, setLoadingData]         = useState(false);
@@ -45,13 +53,17 @@ export default function PredictionPanel() {
 
   const [lat, setLat]               = useState('-66.50');
   const [lon, setLon]               = useState('-65.00');
-  const [date, setDate]             = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(getTomorrow);
   const [predicting, setPredicting] = useState(false);
   const [training, setTraining]     = useState(false);
   const [pointPrediction, setPointPrediction] = useState(null);
   const [trainResult, setTrainResult] = useState(null);
 
   const [hoveredPoint, setHoveredPoint] = useState(null);
+
+  const scrollRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [wrapW, setWrapW] = useState(0);
 
   const loadPredictionsData = async () => {
     setLoadingData(true);
@@ -113,48 +125,94 @@ export default function PredictionPanel() {
 
   const accent = pointPrediction ? statusAccent(pointPrediction.badge_color) : C.accent;
 
-  // ── TÍNH TOÁN TỌA ĐỘ VẼ BIỂU ĐỒ SVG ──────────────────────────────────────
-  const chartPoints = [];
-  if (predictionsData?.historical_series) {
-    predictionsData.historical_series.forEach((h, idx) => {
-      chartPoints.push({
-        type: 'observed',
-        label: h.label,
-        date: h.date,
-        value: h.observed_mean,
-        min: h.observed_min,
-        max: h.observed_max,
-        soundings: h.soundings_count,
-        step: idx
+  // ── TÍNH TOÁN DỮ LIỆU ĐẦY ĐỦ CỦA BIỂU ĐỒ ────────────────────────────────
+  const chartPoints = useMemo(() => {
+    const list = [];
+    if (predictionsData?.historical_series) {
+      predictionsData.historical_series.forEach((h, idx) => {
+        list.push({
+          type: 'observed',
+          label: h.label,
+          date: h.date,
+          value: h.observed_mean,
+          min: h.observed_min,
+          max: h.observed_max,
+          soundings: h.soundings_count,
+          step: idx
+        });
       });
-    });
-  }
+    }
 
-  const forecastItem = predictionsData?.predictions?.[0];
-  if (forecastItem && chartPoints.length > 0) {
-    chartPoints.push({
-      type: 'forecast',
-      label: forecastItem.target_date || 'Ngày mai',
-      date: forecastItem.timestamp,
-      value: forecastItem.predicted_ozone_du,
-      lower: forecastItem.confidence_lower,
-      upper: forecastItem.confidence_upper,
-      status: forecastItem.status_label,
-      step: chartPoints.length
-    });
-  }
+    const forecastItem = predictionsData?.predictions?.[0];
+    if (forecastItem && list.length > 0) {
+      list.push({
+        type: 'forecast',
+        label: forecastItem.target_date || 'Ngày mai',
+        date: forecastItem.timestamp,
+        value: forecastItem.predicted_ozone_du,
+        lower: forecastItem.confidence_lower,
+        upper: forecastItem.confidence_upper,
+        status: forecastItem.status_label,
+        step: list.length
+      });
+    }
+    return list;
+  }, [predictionsData]);
 
-  // Tọa độ biểu đồ SVG
-  const svgWidth = 840;
+  // Biểu đồ tự co giãn theo chiều rộng khung: 7 ngày luôn lấp đầy khung nhìn,
+  // nếu nhiều hơn 7 ngày thì cuộn ngang. Trục Y tách riêng bên trái để luôn hiển thị.
+  const yAxisWidth = 65;
+  const padding = { top: 25, right: 45, bottom: 40, left: 30 }; // chừa chỗ cho nhãn ngày đầu/cuối
+  const visibleDaysCount = 7;
+  const totalDays = chartPoints.length;
+
+  const viewportW = Math.max(300, (wrapW || 800) - yAxisWidth - 2); // trừ viền
+  const DAY_WIDTH = Math.max(60, (viewportW - padding.left - padding.right) / (visibleDaysCount - 1));
+  const slots = Math.max(totalDays, visibleDaysCount);
+  const actualInnerW = DAY_WIDTH * (slots - 1);
+  const plotSvgWidth = actualInnerW + padding.left + padding.right;
   const svgHeight = 260;
-  const padding = { top: 25, right: 40, bottom: 40, left: 55 };
-  const innerW = svgWidth - padding.left - padding.right;
   const innerH = svgHeight - padding.top - padding.bottom;
 
-  const yMin = 180;
-  const yMax = 420;
-  const getY = (val) => padding.top + innerH * (1 - (val - yMin) / (yMax - yMin));
-  const getX = (idx) => padding.left + (idx / Math.max(1, chartPoints.length - 1)) * innerW;
+  // Đo chiều rộng khung biểu đồ (và theo dõi khi thay đổi kích thước cửa sổ)
+  const hasChart = !dataError && chartPoints.length > 0;
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    setWrapW(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) setWrapW(entry.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasChart]);
+
+  // Tự động cuộn sang phải (ngày mới nhất và ngày mai) khi dữ liệu tải xong
+  useEffect(() => {
+    if (scrollRef.current && totalDays > 7) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [totalDays, wrapW]);
+
+  // Tính toán trục Y dựa trên dữ liệu
+  const { yMin, yMax } = useMemo(() => {
+    if (chartPoints.length === 0) return { yMin: 180, yMax: 420 };
+    const vals = chartPoints.map(p => p.value).filter(v => v != null);
+    if (vals.length === 0) return { yMin: 180, yMax: 420 };
+    const minVal = Math.min(...vals, 220); // giữ mốc cảnh báo 220 DU
+    const maxVal = Math.max(...vals);
+    const pad = Math.max(15, (maxVal - minVal) * 0.15);
+    return {
+      yMin: Math.max(100, Math.floor((minVal - pad) / 10) * 10),
+      yMax: Math.ceil((maxVal + pad) / 10) * 10
+    };
+  }, [chartPoints]);
+
+  const getY = (val) => padding.top + innerH * (1 - (val - yMin) / Math.max(1, yMax - yMin));
+  const getX = (idx) => padding.left + (idx / Math.max(1, chartPoints.length - 1)) * actualInnerW;
+
+  const yTicks = [200, 220, 260, 300, 340, 380, 420].filter(v => v >= yMin && v <= yMax);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -196,7 +254,7 @@ export default function PredictionPanel() {
         </div>
       )}
 
-      {/* THẺ CHỈ SỐ MÔ HÌNH (MODEL METADATA & EVALUATION METRICS) */}
+      {/* THẺ CHỈ SỐ MÔ HÌNH */}
       {predictionsData && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           <div style={{ ...panelStyle, padding: '10px 14px' }}>
@@ -236,15 +294,15 @@ export default function PredictionPanel() {
               Ngưỡng thủng: 220 DU
             </p>
             <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Clock size={10} /> {new Date(predictionsData.created_at).toUTCString()}
+              <Clock size={10} /> {predictionsData.created_at ? new Date(predictionsData.created_at).toUTCString() : '—'}
             </p>
           </div>
         </div>
       )}
 
-      {/* BIỂU ĐỒ QUAN TRẮC NỐI DỰ ĐOÁN (TIME-SERIES FORECAST CHART) */}
+      {/* BIỂU ĐỒ QUAN TRẮC NỐI DỰ ĐOÁN */}
       <div style={panelStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <TrendingUp size={14} style={{ color: C.accent }} />
@@ -253,27 +311,23 @@ export default function PredictionPanel() {
               </p>
             </div>
             <p style={{ ...monoStyle, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
-              Dữ liệu quan trắc OMI L2 (đường liền) ⟶ Dự báo Random Forest (đường đứt khúc kèm dải tin cậy 95%)
+              Hiển thị mặc định 7 ngày gần nhất {totalDays > 7 && '· Kéo thanh trượt ngang bên dưới để xem thêm các ngày trước'} · Quan trắc (đường liền) ⟶ Dự báo (đường đứt)
             </p>
           </div>
 
           {/* Legend */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, fontFamily: F.sans }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 12, height: 3, background: C.accent, borderRadius: 1 }} />
-              <span style={{ color: C.textMuted }}>Quan trắc (Observed)</span>
+              <span style={{ width: 10, height: 3, background: C.accent, borderRadius: 1 }} />
+              <span style={{ color: C.textMuted }}>Quan trắc</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 12, height: 3, background: C.purple, borderTop: '2px dashed #8B5CF6' }} />
-              <span style={{ color: C.textMuted }}>Dự báo (Forecast)</span>
+              <span style={{ width: 10, height: 3, background: C.purple, borderTop: '2px dashed #8B5CF6' }} />
+              <span style={{ color: C.textMuted }}>Dự báo</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, background: `${C.purple}25`, border: `1px solid ${C.purple}55`, borderRadius: 2 }} />
-              <span style={{ color: C.textMuted }}>Khoảng tin cậy (95% CI)</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 12, height: 2, background: C.danger, borderTop: '2px dashed #EF4444' }} />
-              <span style={{ color: C.danger }}>Ngưỡng thủng 220 DU</span>
+              <span style={{ width: 10, height: 2, background: C.danger, borderTop: '2px dashed #EF4444' }} />
+              <span style={{ color: C.danger }}>220 DU</span>
             </div>
           </div>
         </div>
@@ -296,130 +350,174 @@ export default function PredictionPanel() {
             <span style={{ fontFamily: F.sans, fontSize: 11, color: C.textMuted }}>Chưa có kết quả dự đoán, mô hình chưa đủ dữ liệu hoặc đang huấn luyện</span>
           </div>
         ) : (
-          <div style={{ position: 'relative' }}>
-            <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
-              {/* Lưới ngang (Grid lines) */}
-              {[200, 220, 250, 300, 350, 400].map((v) => {
-                const y = getY(v);
-                const isHole = v === 220;
-                return (
-                  <g key={v}>
-                    <line
-                      x1={padding.left}
-                      y1={y}
-                      x2={svgWidth - padding.right}
-                      y2={y}
-                      stroke={isHole ? '#EF4444' : '#E2E8F0'}
-                      strokeWidth={isHole ? 1.5 : 1}
-                      strokeDasharray={isHole ? '4 3' : '2 2'}
-                    />
-                    <text
-                      x={padding.left - 8}
-                      y={y + 3}
-                      fontSize="9"
-                      fill={isHole ? '#EF4444' : '#94A3B8'}
-                      textAnchor="end"
-                      fontFamily={F.mono}
-                      fontWeight={isHole ? '700' : '400'}
-                    >
-                      {v} {isHole ? 'DU' : ''}
-                    </text>
-                  </g>
-                );
-              })}
+          <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
 
-              {/* Vùng khoảng tin cậy (Confidence Interval Band) cho điểm dự báo */}
-              {forecastItem && chartPoints.length > 1 && (
-                (() => {
-                  const lastObsIdx = chartPoints.length - 2;
-                  const fIdx = chartPoints.length - 1;
-                  const x1 = getX(lastObsIdx);
-                  const y1 = getY(chartPoints[lastObsIdx].value);
-                  const x2 = getX(fIdx);
-                  const yLower = getY(forecastItem.confidence_lower || (forecastItem.predicted_ozone_du - 9.2));
-                  const yUpper = getY(forecastItem.confidence_upper || (forecastItem.predicted_ozone_du + 9.2));
+            {/* Khung biểu đồ: trục Y cố định + vùng cuộn ngang */}
+            <div style={{ display: 'flex', width: '100%', background: C.surfaceAlt, borderRadius: 6, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
 
-                  const pathD = `M ${x1} ${y1} L ${x2} ${yUpper} L ${x2} ${yLower} Z`;
-                  return (
-                    <g>
-                      <path d={pathD} fill="#8B5CF6" fillOpacity="0.15" />
-                      {/* Vạch cận trên & cận dưới */}
-                      <line x1={x2 - 6} y1={yUpper} x2={x2 + 6} y2={yUpper} stroke="#8B5CF6" strokeWidth="2" />
-                      <line x1={x2 - 6} y1={yLower} x2={x2 + 6} y2={yLower} stroke="#8B5CF6" strokeWidth="2" />
-                      <line x1={x2} y1={yUpper} x2={x2} y2={yLower} stroke="#8B5CF6" strokeWidth="1.2" strokeDasharray="2 2" />
-                    </g>
-                  );
-                })()
-              )}
+              {/* 1. Trục Y CỐ ĐỊNH bên trái */}
+              <div style={{ width: `${yAxisWidth}px`, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: C.surface, zIndex: 2 }}>
+                <svg width={yAxisWidth} height={svgHeight} style={{ display: 'block' }}>
+                  {yTicks.map((v) => {
+                    const y = getY(v);
+                    const isHole = v === 220;
+                    return (
+                      <g key={v}>
+                        <line
+                          x1={yAxisWidth - 6}
+                          y1={y}
+                          x2={yAxisWidth}
+                          y2={y}
+                          stroke={isHole ? '#EF4444' : '#94A3B8'}
+                          strokeWidth={isHole ? 2 : 1}
+                        />
+                        <text
+                          x={yAxisWidth - 10}
+                          y={y + 4}
+                          fontSize={isHole ? '12' : '11'}
+                          fill={isHole ? '#EF4444' : '#475569'}
+                          textAnchor="end"
+                          fontFamily={F.mono}
+                          fontWeight={isHole ? '800' : '600'}
+                        >
+                          {v} {isHole ? 'DU' : ''}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
 
-              {/* Đường quan trắc lịch sử (Observed solid line) */}
-              {(() => {
-                const obsPoints = chartPoints.filter(p => p.type === 'observed');
-                if (obsPoints.length < 2) return null;
-                const d = obsPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(p.step)} ${getY(p.value)}`).join(' ');
-                return <path d={d} fill="none" stroke={C.accent} strokeWidth="2.5" />;
-              })()}
+              {/* 2. Khung vẽ biểu đồ cuộn ngang */}
+              <div
+                ref={scrollRef}
+                style={{
+                  flex: 1,
+                  overflowX: totalDays > 7 ? 'auto' : 'hidden',
+                  overflowY: 'hidden',
+                  position: 'relative'
+                }}
+              >
+                <svg
+                  width={plotSvgWidth}
+                  height={svgHeight}
+                  viewBox={`0 0 ${plotSvgWidth} ${svgHeight}`}
+                  style={{ display: 'block', overflow: 'visible' }}
+                >
+                  {/* Lưới ngang */}
+                  {yTicks.map((v) => {
+                    const y = getY(v);
+                    const isHole = v === 220;
+                    return (
+                      <line
+                        key={v}
+                        x1={0}
+                        y1={y}
+                        x2={plotSvgWidth}
+                        y2={y}
+                        stroke={isHole ? '#EF4444' : '#E2E8F0'}
+                        strokeWidth={isHole ? 1.5 : 1}
+                        strokeDasharray={isHole ? '4 3' : '2 2'}
+                      />
+                    );
+                  })}
 
-              {/* Đường nối dự báo (Forecast dashed line) */}
-              {chartPoints.length > 1 && (
-                (() => {
-                  const pPrev = chartPoints[chartPoints.length - 2];
-                  const pNext = chartPoints[chartPoints.length - 1];
-                  return (
-                    <line
-                      x1={getX(pPrev.step)}
-                      y1={getY(pPrev.value)}
-                      x2={getX(pNext.step)}
-                      y2={getY(pNext.value)}
-                      stroke="#8B5CF6"
-                      strokeWidth="2.5"
-                      strokeDasharray="5 4"
-                    />
-                  );
-                })()
-              )}
+                  {/* Vùng khoảng tin cậy cho điểm dự báo */}
+                  {chartPoints.some(p => p.type === 'forecast') && chartPoints.length > 1 && (
+                    (() => {
+                      const fIdx = chartPoints.findIndex(p => p.type === 'forecast');
+                      if (fIdx <= 0) return null;
+                      const lastObs = chartPoints[fIdx - 1];
+                      const fPoint = chartPoints[fIdx];
+                      const x1 = getX(lastObs.step);
+                      const y1 = getY(lastObs.value);
+                      const x2 = getX(fPoint.step);
+                      const yLower = getY(fPoint.lower || (fPoint.value - 9.2));
+                      const yUpper = getY(fPoint.upper || (fPoint.value + 9.2));
 
-              {/* Các điểm dữ liệu (Dots) */}
-              {chartPoints.map((pt, i) => {
-                const cx = getX(pt.step);
-                const cy = getY(pt.value);
-                const isForecast = pt.type === 'forecast';
-                return (
-                  <g
-                    key={i}
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => setHoveredPoint(pt)}
-                    onMouseLeave={() => setHoveredPoint(null)}
-                  >
-                    {isForecast && (
-                      <circle cx={cx} cy={cy} r="10" fill="#8B5CF6" fillOpacity="0.2" className="animate-ping" />
-                    )}
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={isForecast ? 6 : 4.5}
-                      fill={isForecast ? '#8B5CF6' : '#FFFFFF'}
-                      stroke={isForecast ? '#6D28D9' : C.accent}
-                      strokeWidth={isForecast ? 2.5 : 2}
-                    />
-                    {/* Nhãn trục X */}
-                    <text
-                      x={cx}
-                      y={svgHeight - 12}
-                      fontSize="9"
-                      fill={isForecast ? '#8B5CF6' : '#64748B'}
-                      textAnchor="middle"
-                      fontFamily={F.mono}
-                      fontWeight={isForecast ? '700' : '500'}
-                    >
-                      {pt.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+                      const pathD = `M ${x1} ${y1} L ${x2} ${yUpper} L ${x2} ${yLower} Z`;
+                      return (
+                        <g>
+                          <path d={pathD} fill="#8B5CF6" fillOpacity="0.15" />
+                          <line x1={x2 - 6} y1={yUpper} x2={x2 + 6} y2={yUpper} stroke="#8B5CF6" strokeWidth="2" />
+                          <line x1={x2 - 6} y1={yLower} x2={x2 + 6} y2={yLower} stroke="#8B5CF6" strokeWidth="2" />
+                          <line x1={x2} y1={yUpper} x2={x2} y2={yLower} stroke="#8B5CF6" strokeWidth="1.2" strokeDasharray="2 2" />
+                        </g>
+                      );
+                    })()
+                  )}
 
-            {/* Hover Tooltip */}
+                  {/* Đường quan trắc lịch sử */}
+                  {(() => {
+                    const obsPoints = chartPoints.filter(p => p.type === 'observed');
+                    if (obsPoints.length < 2) return null;
+                    const d = obsPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(p.step)} ${getY(p.value)}`).join(' ');
+                    return <path d={d} fill="none" stroke={C.accent} strokeWidth="2.5" />;
+                  })()}
+
+                  {/* Đường nối dự báo */}
+                  {chartPoints.some(p => p.type === 'forecast') && chartPoints.length > 1 && (
+                    (() => {
+                      const fIdx = chartPoints.findIndex(p => p.type === 'forecast');
+                      if (fIdx <= 0) return null;
+                      const pPrev = chartPoints[fIdx - 1];
+                      const pNext = chartPoints[fIdx];
+                      return (
+                        <line
+                          x1={getX(pPrev.step)}
+                          y1={getY(pPrev.value)}
+                          x2={getX(pNext.step)}
+                          y2={getY(pNext.value)}
+                          stroke="#8B5CF6"
+                          strokeWidth="2.5"
+                          strokeDasharray="5 4"
+                        />
+                      );
+                    })()
+                  )}
+
+                  {/* Các điểm dữ liệu */}
+                  {chartPoints.map((pt, i) => {
+                    const cx = getX(pt.step);
+                    const cy = getY(pt.value);
+                    const isForecast = pt.type === 'forecast';
+                    return (
+                      <g
+                        key={i}
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => setHoveredPoint(pt)}
+                        onMouseLeave={() => setHoveredPoint(null)}
+                      >
+                        {isForecast && (
+                          <circle cx={cx} cy={cy} r="10" fill="#8B5CF6" fillOpacity="0.2" className="animate-ping" />
+                        )}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={isForecast ? 6 : 4.5}
+                          fill={isForecast ? '#8B5CF6' : '#FFFFFF'}
+                          stroke={isForecast ? '#6D28D9' : C.accent}
+                          strokeWidth={isForecast ? 2.5 : 2}
+                        />
+                        <text
+                          x={cx}
+                          y={svgHeight - 12}
+                          fontSize="11"
+                          fill={isForecast ? '#8B5CF6' : '#475569'}
+                          textAnchor="middle"
+                          fontFamily={F.mono}
+                          fontWeight={isForecast ? '700' : '600'}
+                        >
+                          {pt.label}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            </div>
+
+            {/* Hover Tooltip (nằm ngoài khung overflow hidden, trong wrapper relative) */}
             {hoveredPoint && (
               <div
                 style={{
@@ -617,9 +715,14 @@ export default function PredictionPanel() {
                 ].map(({ label, value, unit, big }, i) => (
                   <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '10px 12px' }}>
                     <p style={{ ...labelStyle, marginBottom: 4 }}>{label}</p>
-                    <p style={{ fontFamily: F.mono, fontSize: big ? 20 : 12, fontWeight: 700, color: i === 0 ? accent : C.textPrimary, margin: 0 }}>
+                    <p style={{ fontFamily: F.mono, fontSize: big ? 20 : 11, fontWeight: 700, color: i === 0 ? accent : C.textPrimary, margin: 0, lineHeight: 1.3 }}>
                       {value}<span style={{ fontFamily: F.sans, fontSize: 10, color: C.textMuted, marginLeft: 2 }}>{unit}</span>
                     </p>
+                    {i === 1 && pointPrediction.days_ahead > 0 && (
+                      <p style={{ ...monoStyle, fontSize: 9, color: C.textMuted, marginTop: 4 }}>
+                        {pointPrediction.days_ahead === 1 ? 'Dự báo ngày mai (+1 ngày)' : `Dự báo trước +${pointPrediction.days_ahead} ngày`}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -636,6 +739,7 @@ export default function PredictionPanel() {
                   </p>
                 </div>
               </div>
+              
 
               {/* Input features */}
               <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 4, padding: '10px 12px' }}>
