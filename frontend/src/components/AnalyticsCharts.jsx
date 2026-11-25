@@ -175,8 +175,18 @@ export default function AnalyticsCharts() {
     );
   }, [data?.scatter_plot, ozoneMin, ozoneMax, szaMin, szaMax, cloudFraction]);
 
-  // Biểu đồ 3 (Histogram): Tự động tính toán lại các cột tần suất theo đúng các điểm đã lọc đủ cả 3 tiêu chí: Ozone, SZA và Mây
+  // Biểu đồ 3 (Histogram): Ưu tiên lấy trực tiếp 10 cột tính toán trên TOÀN BỘ CƠ SỞ DỮ LIỆU từ Backend (width_bucket SQL).
+  // Khi người dùng kéo bộ lọc OzoneMin - OzoneMax, lọc theo các khoảng bin tương ứng.
   const histBars = useMemo(() => {
+    const serverHist = data?.histogram;
+    if (serverHist && Array.isArray(serverHist) && serverHist.length > 0) {
+      return serverHist.filter((b) => {
+        const mid = (b.bin_start + b.bin_end) / 2;
+        return mid >= ozoneMin && mid <= ozoneMax;
+      });
+    }
+
+    // Fallback: nếu Backend chưa có dữ liệu histogram sẵn thì mới tính từ scatterPoints
     const pts = scatterPoints;
     const numBins = 10;
     const oMin = ozoneMin;
@@ -206,7 +216,7 @@ export default function AnalyticsCharts() {
     }
 
     return bins;
-  }, [scatterPoints, ozoneMin, ozoneMax]);
+  }, [data?.histogram, scatterPoints, ozoneMin, ozoneMax]);
 
   // Tự động co giãn dải trục X của Scatter Plot theo SZA thực tế tại Nam Cực
   const szaPlotMin = useMemo(() => {
@@ -1037,7 +1047,7 @@ export default function AnalyticsCharts() {
                   3. Biểu đồ tần suất (Histogram) — Phân phối Ozone & Phân bố chuẩn
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {scatterPoints.length} điểm đo
+                  {histBars.reduce((acc, b) => acc + (b.count || 0), 0).toLocaleString()} điểm đo
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -1183,54 +1193,103 @@ export default function AnalyticsCharts() {
                             {b.bin_start}
                           </text>
 
-                          {/* Tooltip khi hover cột */}
-                          {isHovered && b.count > 0 && (
-                            <g className="select-none">
-                              <rect
-                                x={Math.max(10, Math.min(baseSvgW - 120, x - 20))}
-                                y={Math.max(5, y - 40)}
-                                width={Math.max(barWidth + 40, 100)}
-                                height="32"
-                                fill="#0f172a"
-                                rx="5"
-                                opacity="0.95"
-                              />
-                              <text
-                                x={Math.max(60, Math.min(baseSvgW - 60, x + barWidth / 2))}
-                                y={Math.max(5, y - 40) + 14}
-                                textAnchor="middle"
-                                fontSize="10"
-                                fill="#fbbf24"
-                                fontWeight="bold"
-                              >
-                                {b.count} điểm đo
-                              </text>
-                              <text
-                                x={Math.max(60, Math.min(baseSvgW - 60, x + barWidth / 2))}
-                                y={Math.max(5, y - 40) + 26}
-                                textAnchor="middle"
-                                fontSize="8.5"
-                                fill="#cbd5e1"
-                              >
-                                {b.bin_start} – {b.bin_end || (b.bin_start + Math.ceil(oSpan / histBars.length))} DU
-                              </text>
-                            </g>
-                          )}
+                          {/* Tooltip khi hover cột — Căn chính giữa hoàn hảo phía trên cột */}
+                          {isHovered && b.count > 0 && (() => {
+                            const tipW = 100;
+                            const tipH = 34;
+                            const colCenterX = x + barWidth / 2;
+                            // Căn giữa hộp chữ nhật theo tâm cột, đồng thời chặn 2 mép SVG
+                            const tipX = Math.max(10, Math.min(baseSvgW - tipW - 10, colCenterX - tipW / 2));
+                            const tipY = Math.max(5, y - tipH - 8);
+
+                            return (
+                              <g className="select-none pointer-events-none">
+                                <rect
+                                  x={tipX}
+                                  y={tipY}
+                                  width={tipW}
+                                  height={tipH}
+                                  fill="#0f172a"
+                                  stroke="#334155"
+                                  strokeWidth="1"
+                                  rx="6"
+                                  opacity="0.96"
+                                />
+                                <text
+                                  x={tipX + tipW / 2}
+                                  y={tipY + 14}
+                                  textAnchor="middle"
+                                  fontSize="10"
+                                  fill="#fbbf24"
+                                  fontWeight="bold"
+                                >
+                                  {b.count.toLocaleString()} điểm đo
+                                </text>
+                                <text
+                                  x={tipX + tipW / 2}
+                                  y={tipY + 27}
+                                  textAnchor="middle"
+                                  fontSize="9"
+                                  fill="#cbd5e1"
+                                  fontFamily="monospace"
+                                >
+                                  {b.bin_start} – {b.bin_end || (b.bin_start + Math.ceil(oSpan / histBars.length))} DU
+                                </text>
+                              </g>
+                            );
+                          })()}
                         </g>
                       );
                     })}
 
-                    {/* Đường Mean */}
-                    <line x1={meanX} y1="20" x2={meanX} y2="165" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="3 3" />
-                    <text x={meanX} y="14" textAnchor="middle" fontSize="9" fill="#3b82f6" fontWeight="bold">
-                      Mean: {Math.round(meanVal)}
-                    </text>
+                    {/* Đường & Nhãn Mean / Median: Tự động so le Y và tách X nếu khoảng cách gần nhau để không bao giờ bị đè chữ */}
+                    {(() => {
+                      const isClose = Math.abs(meanX - medianX) < 48;
+                      // Khi 2 đường gần nhau: Mean nằm ở tầng trên (y=11), Median nằm ở tầng dưới (y=23) hoặc ngược lại, kèm pill nền mờ
+                      const meanY = isClose ? 11 : 13;
+                      const medianY = isClose ? 23 : 13;
+                      return (
+                        <>
+                          {/* Đường Mean */}
+                          <line x1={meanX} y1={meanY + 4} x2={meanX} y2="165" stroke="#2563eb" strokeWidth="1.5" strokeDasharray="3 3" />
+                          <g>
+                            <rect
+                              x={meanX - 24}
+                              y={meanY - 9}
+                              width="48"
+                              height="13"
+                              rx="3"
+                              fill="#eff6ff"
+                              stroke="#bfdbfe"
+                              strokeWidth="0.8"
+                              opacity="0.95"
+                            />
+                            <text x={meanX} y={meanY} textAnchor="middle" fontSize="8.5" fill="#1d4ed8" fontWeight="bold">
+                              Mean: {Math.round(meanVal)}
+                            </text>
+                          </g>
 
-                    {/* Đường Median */}
-                    <line x1={medianX} y1="20" x2={medianX} y2="165" stroke="#8b5cf6" strokeWidth="1.5" strokeDasharray="3 3" />
-                    <text x={medianX} y="14" textAnchor="middle" fontSize="9" fill="#8b5cf6" fontWeight="bold">
-                      Med: {Math.round(medianVal)}
-                    </text>
+                          {/* Đường Median */}
+                          <line x1={medianX} y1={medianY + 4} x2={medianX} y2="165" stroke="#7c3aed" strokeWidth="1.5" strokeDasharray="3 3" />
+                          <g>
+                            <rect
+                              x={medianX - 22}
+                              y={medianY - 9}
+                              width="44"
+                              height="13"
+                              rx="3"
+                              fill="#f5f3ff"
+                              stroke="#ddd6fe"
+                              strokeWidth="0.8"
+                              opacity="0.95"
+                            />
+                            <text x={medianX} y={medianY} textAnchor="middle" fontSize="8.5" fill="#6d28d9" fontWeight="bold">
+                              Med: {Math.round(medianVal)}
+                            </text>
+                          </g>
+                        </>
+                      );
+                    })()}
 
                     {/* Trục X cơ sở */}
                     <line x1="45" y1="166" x2={baseSvgW - 25} y2="166" stroke="#cbd5e1" strokeWidth="1.2" />

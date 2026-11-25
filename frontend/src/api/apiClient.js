@@ -12,7 +12,7 @@ export const api = {
   getStats: () =>
     axios.get(`${API_BASE.db}/api/stats`).then((res) => res.data),
 
-  getGranules: (limit = 50, offset = 0) =>
+  getGranules: (limit = 1000, offset = 0) =>
     axios.get(`${API_BASE.db}/api/granules?limit=${limit}&offset=${offset}`).then((res) => res.data),
 
   getRawMeasurements: (limit = 100, offset = 0, params = {}) => {

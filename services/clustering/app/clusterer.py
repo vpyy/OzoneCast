@@ -170,15 +170,15 @@ class OzoneClusterer:
                 "characteristic": p_info.get("characteristic", "Vùng bề mặt / Khí quyển thông thường")
             })
 
-        # Lưu dữ liệu điểm vào CSDL qua Database API
+        # Lưu dữ liệu điểm vào CSDL qua Database API (lưu toàn bộ các ô lưới, tối đa 1000 ô)
         try:
             resp = requests.post(
                 f"{DATABASE_API_URL}/api/clusters/bulk",
-                json={"items": cluster_records[:400]},
+                json={"items": cluster_records[:1000]},
                 timeout=15
             )
             if resp.status_code in (200, 201):
-                logger.info(f"Persisted {min(len(cluster_records), 400)} cluster records to database.")
+                logger.info(f"Persisted {min(len(cluster_records), 1000)} cluster records to database.")
             else:
                 logger.warning(f"Could not persist clusters: status {resp.status_code} - {resp.text}")
         except Exception as e:

@@ -427,7 +427,7 @@ export default function ClusteringPanel({ clusters = [], onClustersUpdated }) {
                 <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', padding: 24, color: C.textDisabled }}>
                   Chưa có dữ liệu cụm.
                 </td></tr>
-              ) : visibleClusters.slice(0, 100).map((c, i) => {
+              ) : visibleClusters.map((c, i) => {
                 const isHole = (c.mean_ozone || 0) < 220;
                 const acc = getClusterColor(c.cluster_id, isHole);
                 return (

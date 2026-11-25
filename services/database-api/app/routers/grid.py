@@ -109,14 +109,14 @@ def get_grid_summary(
     if results:
         return results
 
-    # Dynamic SQL binning từ dữ liệu thô khi bảng tổng hợp chưa chạy
+    # Dynamic SQL binning 0.25° x 0.25° từ dữ liệu quan trắc Bán đảo Nam Cực trong 24h qua (hoặc toàn bộ dữ liệu sạch nếu DB tích lũy)
     sql = text("""
         SELECT 
             row_number() OVER () AS id,
-            'Dynamic_SQL_Binning' AS source_filename,
+            'Spatial_Grid_0.25deg' AS source_filename,
             COALESCE(MAX(created_at), NOW()) AS timestamp,
-            round((latitude / 0.5)::numeric) * 0.5 AS lat_bin,
-            round((longitude / 0.5)::numeric) * 0.5 AS lon_bin,
+            round((latitude / 0.25)::numeric) * 0.25 AS lat_bin,
+            round((longitude / 0.25)::numeric) * 0.25 AS lon_bin,
             round(avg(ozone_column_raw)::numeric, 1) AS ozone_column_mean,
             round(min(ozone_column_raw)::numeric, 1) AS ozone_column_min,
             round(max(ozone_column_raw)::numeric, 1) AS ozone_column_max,
@@ -124,8 +124,13 @@ def get_grid_summary(
             round(avg(uv_aerosol_index)::numeric, 2) AS uv_aerosol_mean,
             count(*)::int AS valid_pixel_count
         FROM raw_measurements
-        WHERE ozone_column_raw IS NOT NULL
+        WHERE ozone_column_raw IS NOT NULL 
+          AND ozone_column_raw > 0
+          AND quality_flag = 0
+          AND latitude BETWEEN -70.0 AND -63.0
+          AND longitude BETWEEN -75.0 AND -55.0
         GROUP BY 4, 5
+        ORDER BY lat_bin ASC, lon_bin ASC
         LIMIT :limit OFFSET :offset
     """)
     rows = db.execute(sql, {"limit": limit, "offset": offset}).fetchall()

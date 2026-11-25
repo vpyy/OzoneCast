@@ -245,47 +245,70 @@ def get_clusters(
     offset: Annotated[int, Query(ge=0)] = 0,
     algorithm: Annotated[Optional[str], Query()] = None
 ) -> List[ClusterResponse]:
-    query = db.query(ClusterResult)
+    # Chỉ lấy kết quả của MẺ CHẠY PHÂN CỤM MỚI NHẤT (latest run_timestamp)
+    # Tránh tình trạng lấy lẫn lộn các mẻ phân cụm của các ngày khác nhau khiến cùng 1 tọa độ bị vẽ chồng nhiều màu
+    latest_ts_query = db.query(ClusterResult.run_timestamp)
     if algorithm:
-        query = query.filter(ClusterResult.algorithm.ilike(f"%{algorithm}%"))
-    results = (
-        query
-        .order_by(ClusterResult.run_timestamp.desc(), ClusterResult.id.asc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    if results:
-        return results
+        latest_ts_query = latest_ts_query.filter(ClusterResult.algorithm.ilike(f"%{algorithm}%"))
+    latest_ts = latest_ts_query.order_by(ClusterResult.run_timestamp.desc()).first()
 
-    # Dynamic fallback từ raw_measurements khi chưa có dữ liệu cụm
+    if latest_ts and latest_ts[0]:
+        query = db.query(ClusterResult).filter(ClusterResult.run_timestamp == latest_ts[0])
+        if algorithm:
+            query = query.filter(ClusterResult.algorithm.ilike(f"%{algorithm}%"))
+        results = (
+            query
+            .order_by(ClusterResult.latitude.asc(), ClusterResult.longitude.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        if results:
+            return results
+
+    # Dynamic fallback: Tổng hợp theo ô lưới 0.25° x 0.25° của Bán đảo Nam Cực [-70..-63 lat, -75..-55 lon]
+    # Phân cụm theo ngưỡng khí quyển chuẩn trên ma trận đặc trưng x_i = [lat_bin, lon_bin, ozone_mean, refl_mean]
     sql = text("""
+        WITH grid_cells AS (
+            SELECT 
+                round((latitude / 0.25)::numeric) * 0.25 AS lat_bin,
+                round((longitude / 0.25)::numeric) * 0.25 AS lon_bin,
+                round(avg(ozone_column_raw)::numeric, 1) AS mean_ozone,
+                round(avg(reflectivity331)::numeric, 1) AS mean_reflectivity,
+                count(*)::int AS point_count
+            FROM raw_measurements
+            WHERE ozone_column_raw IS NOT NULL 
+              AND ozone_column_raw > 0 
+              AND quality_flag = 0
+              AND latitude BETWEEN -70.0 AND -63.0
+              AND longitude BETWEEN -75.0 AND -55.0
+            GROUP BY 1, 2
+        )
         SELECT 
-            row_number() OVER () AS id,
+            row_number() OVER (ORDER BY lat_bin ASC, lon_bin ASC) AS id,
             NOW() AS run_timestamp,
             'KMeans' AS algorithm,
             (CASE 
-                WHEN ozone_column_raw < 220 THEN 0
-                WHEN latitude < -60 THEN 1
-                WHEN abs(latitude) < 25 THEN 2
+                WHEN mean_ozone < 220 THEN 0
+                WHEN lat_bin <= -67.5 THEN 1
+                WHEN mean_reflectivity >= 45.0 THEN 2
                 ELSE 3
             END) AS cluster_id,
-            round(latitude::numeric, 2) AS latitude,
-            round(longitude::numeric, 2) AS longitude,
-            round(ozone_column_raw::numeric, 1) AS mean_ozone,
-            round(reflectivity331::numeric, 1) AS mean_reflectivity,
-            1 AS point_count,
+            lat_bin AS latitude,
+            lon_bin AS longitude,
+            mean_ozone,
+            COALESCE(mean_reflectivity, 25.0) AS mean_reflectivity,
+            point_count,
             (CASE 
-                WHEN ozone_column_raw < 220 THEN 'Vùng thủng ozone Nam Cực'
-                WHEN latitude < -60 THEN 'Vùng băng tuyết cực Nam'
-                WHEN abs(latitude) < 25 THEN 'Vùng bức xạ nhiệt đới'
-                ELSE 'Vùng ôn đới thông thường'
+                WHEN mean_ozone < 220 THEN 'Cụm 1: Vùng rìa suy giảm Ozone / Thềm băng lạnh sâu'
+                WHEN lat_bin <= -67.5 THEN 'Cụm 2: Vùng hoàn lưu chuyển tiếp ven biển'
+                WHEN mean_reflectivity >= 45.0 THEN 'Cụm 3: Vùng lõi thềm băng vĩnh cửu'
+                ELSE 'Cụm 4: Vùng Ozone dày / Khí quyển ổn định ven biển'
             END) AS tag,
-            'Phân cụm tự động theo tọa độ và nồng độ ozone' AS characteristic
-        FROM raw_measurements
-        WHERE ozone_column_raw IS NOT NULL
+            'Phân cụm ô lưới 0.25°x0.25° theo ma trận đặc trưng [Lat, Lon, Ozone, Reflectivity]' AS characteristic
+        FROM grid_cells
         ORDER BY id ASC
-        LIMIT :limit OFFSET :offset
+        LIMIT :limit OFFSET :offset;
     """)
     rows = db.execute(sql, {"limit": limit, "offset": offset}).fetchall()
     return [
@@ -697,8 +720,19 @@ def get_timeseries_analysis(
         for r in line_rows
     ]
 
-    # 2. Scatter plot: 300 điểm phân tán mới nhất Góc mặt trời (SZA) vs Nồng độ Ozone & Vĩ độ
-    sql_scatter = text("""
+    # Điều kiện tiền xử lý & làm sạch chuẩn của OzoneCast cho vùng nghiên cứu Bán đảo Nam Cực:
+    # 1. Bounding box Bán đảo Nam Cực: Latitude [-70.0, -63.0], Longitude [-75.0, -55.0]
+    # 2. Dữ liệu hợp lệ: ozone_column_raw > 0, solar_zenith_angle > 0, quality_flag = 0 (loại trừ điểm lỗi cảm biến/fill value)
+    cleaned_condition = """
+        ozone_column_raw IS NOT NULL 
+        AND ozone_column_raw > 0 
+        AND quality_flag = 0
+        AND latitude BETWEEN -70.0 AND -63.0
+        AND longitude BETWEEN -75.0 AND -55.0
+    """
+
+    # 2. Scatter plot: Lấy mẫu ngẫu nhiên đại diện (1500 điểm) TRONG VÙNG BÁN ĐẢO NAM CỰC ĐÃ QUA LÀM SẠCH
+    sql_scatter = text(f"""
         SELECT 
             round(solar_zenith_angle::numeric, 2) AS x_sza,
             round(ozone_column_raw::numeric, 2) AS y_ozone,
@@ -707,11 +741,11 @@ def get_timeseries_analysis(
             round(latitude::numeric, 2) AS latitude,
             round(radiative_cloud_fraction::numeric, 2) AS cloud_fraction
         FROM raw_measurements
-        WHERE ozone_column_raw IS NOT NULL AND solar_zenith_angle > 0
-        ORDER BY id DESC
-        LIMIT 300;
+        WHERE {cleaned_condition} AND solar_zenith_angle > 0
+        ORDER BY RANDOM()
+        LIMIT 1500;
     """)
-    scatter_rows = list(reversed(db.execute(sql_scatter).fetchall()))
+    scatter_rows = db.execute(sql_scatter).fetchall()
     scatter_plot = [
         {
             "x_sza": float(r._mapping["x_sza"]),
@@ -724,24 +758,42 @@ def get_timeseries_analysis(
         for r in scatter_rows
     ]
 
-    # 3. Histogram: 10 khoảng phân bố mật độ nồng độ Ozone (DU) từ dữ liệu thực
-    sql_hist = text("""
+    # 3. Histogram: 10 khoảng (bins) gom nhóm trên TOÀN BỘ BẢN GHI ĐÃ QUA LÀM SẠCH & TIỀN XỬ LÝ TRONG BÁN ĐẢO NAM CỰC
+    sql_hist = text(f"""
         WITH stats AS (
-            SELECT min(ozone_column_raw) AS min_o3, max(ozone_column_raw) AS max_o3 
-            FROM raw_measurements WHERE ozone_column_raw IS NOT NULL
+            SELECT 
+                COALESCE(min(ozone_column_raw), 180) AS min_o3, 
+                COALESCE(max(ozone_column_raw), 450) AS max_o3 
+            FROM raw_measurements 
+            WHERE {cleaned_condition}
+        ),
+        bounds AS (
+            SELECT 
+                min_o3,
+                CASE WHEN max_o3 <= min_o3 THEN min_o3 + 10 ELSE max_o3 END AS max_o3
+            FROM stats
         ),
         buckets AS (
             SELECT 
-                width_bucket(ozone_column_raw, (SELECT min_o3 FROM stats) - 0.1, (SELECT max_o3 FROM stats) + 0.1, 10) AS b,
-                min(ozone_column_raw) AS b_start,
-                max(ozone_column_raw) AS b_end,
+                width_bucket(m.ozone_column_raw, b.min_o3 - 0.01, b.max_o3 + 0.01, 10) AS b,
                 count(*) AS count
-            FROM raw_measurements
-            WHERE ozone_column_raw IS NOT NULL
+            FROM raw_measurements m
+            CROSS JOIN bounds b
+            WHERE {cleaned_condition}
             GROUP BY 1
-            ORDER BY 1
+        ),
+        grid AS (
+            SELECT generate_series(1, 10) AS b
         )
-        SELECT b, round(b_start::numeric, 0) as b_start, round(b_end::numeric, 0) as b_end, count FROM buckets;
+        SELECT 
+            g.b,
+            round((b.min_o3 + (g.b - 1) * (b.max_o3 - b.min_o3) / 10.0)::numeric, 0) AS b_start,
+            round((b.min_o3 + g.b * (b.max_o3 - b.min_o3) / 10.0)::numeric, 0) AS b_end,
+            COALESCE(bk.count, 0) AS count
+        FROM grid g
+        CROSS JOIN bounds b
+        LEFT JOIN buckets bk ON g.b = bk.b
+        ORDER BY g.b ASC;
     """)
     hist_rows = db.execute(sql_hist).fetchall()
     histogram = [
