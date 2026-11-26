@@ -70,7 +70,27 @@ class ClusteringPreprocessor:
 
         # Ép kiểu dữ liệu số
         for col in FEATURE_COLUMNS:
-            work_df[col] = pd.to_numeric(work_df[col], errors="coerce").fillna(0.0)
+            work_df[col] = pd.to_numeric(work_df[col], errors="coerce")
+
+        # Lọc đúng vùng Bán đảo Nam Cực và gom nhóm theo từng ô lưới duy nhất (lat_bin, lon_bin)
+        # Tránh trùng lặp nhiều granule trên cùng một tọa độ và đảm bảo 400–615 ô lưới độc lập
+        work_df = work_df.dropna(subset=["lat_bin", "lon_bin", "ozone_column_mean"])
+        work_df = work_df[
+            (work_df["lat_bin"] >= -70.0) & (work_df["lat_bin"] <= -63.0) &
+            (work_df["lon_bin"] >= -75.0) & (work_df["lon_bin"] <= -55.0) &
+            (work_df["ozone_column_mean"] > 0)
+        ]
+        if not work_df.empty:
+            work_df = (
+                work_df.groupby(["lat_bin", "lon_bin"], as_index=False)
+                .agg({
+                    "ozone_column_mean": "mean",
+                    "reflectivity_mean": "mean"
+                })
+            )
+
+        for col in FEATURE_COLUMNS:
+            work_df[col] = work_df[col].fillna(0.0)
 
         feature_matrix = work_df[FEATURE_COLUMNS].values
 
