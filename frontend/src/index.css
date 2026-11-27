@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900;1,300;1,400;1,500;1,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global Font Enforcements: Roboto & Open Sans ─────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  background: #F8FAFC;
+  color: #0F172A;
+  font-family: 'Open Sans', 'Roboto', system-ui, -apple-system, sans-serif !important;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* All headings, buttons, tabs, labels, badges, table headers use Roboto */
+h1, h2, h3, h4, h5, h6,
+.font-heading,
+button,
+nav,
+nav button,
+th {
+  font-family: 'Roboto', 'Open Sans', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Body texts, inputs, paragraphs, selects, tooltips use Open Sans */
+p, span, div, td, label, input, select, textarea, li, a {
+  font-family: 'Open Sans', 'Roboto', system-ui, -apple-system, sans-serif;
+}
+
+/* Monospace restricted specifically to technical numbers, hex & code */
+.font-mono, code, pre, .tabular, input[type="number"] {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #F1F5F9; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ── Leaflet Map ──────────────────────────────────────────────────────────── */
+#map { height: 100%; width: 100%; min-height: 480px; }
+
+.leaflet-popup-content-wrapper {
+  background: #fff !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+  color: #0F172A !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  padding: 0 !important;
+}
+.leaflet-popup-tip { background: #E2E8F0 !important; }
+.leaflet-popup-content { margin: 10px 12px !important; }
+.leaflet-container { background: #E2E8F0 !important; }
+.leaflet-control-zoom a {
+  background: #fff !important;
+  color: #64748B !important;
+  border-color: #E2E8F0 !important;
+}
+.leaflet-control-zoom a:hover {
+  background: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+.leaflet-control-attribution {
+  background: rgba(255,255,255,0.9) !important;
+  color: #94A3B8 !important;
+  font-size: 10px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* ── Tooltip fade-in ─────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-2px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+.animate-fadeIn { animation: fadeIn 0.15s ease-out; }
+
+/* ── Ping animation for satellite marker ─────────────────────────────────── */
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}

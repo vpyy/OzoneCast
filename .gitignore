@@ -1,27 +1,44 @@
-# Python
+# Python & Environments
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
+.venv/
+*.egg-info/
+
+# ── .env thật — KHÔNG bao giờ commit ──────────────────────────────────────────
 .env
+.env.local
+.env.production
+.env.staging
+# Cho phép commit .env.example (template)
+!.env.example
+services/**/.env
+!services/**/.env.example
 
-# NASA Data files (Bronze / Silver)
-data/raw/*
-!data/raw/.gitkeep
-data/bronze_raw/*
-data/silver_processed/*
-!data/silver_processed/.gitkeep
-data/*.png
-data/*.html
-data/*.db
-data/.urs_cookies
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+node_modules/
 
-# ML Model weights
-models/*.pkl
+# Data files & Storage
+data/
+*.he5
+*.nc
+*.h5
+*.db
+*.sqlite3
+.urs_cookies
+/tmp/
+
+# ML Model weights (Pre-trained production models tracked in git for offline/demo readiness)
+*.pkl
+!services/backend-services/models/*.pkl
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
+*.swp

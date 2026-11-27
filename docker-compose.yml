@@ -1,0 +1,181 @@
+# =============================================================================
+#  OzoneCast — Docker Compose
+#  Kiến trúc microservice:
+#    postgres         → Database PostgreSQL 16
+#    database-api     → FastAPI REST API (sole gateway to PostgreSQL) :8000
+#    data-ingestion   → Scheduler: NASA CMR → database-api             :8002
+#    data-analysis    → Scheduler: Spatial binning, anomalies, series  (mỗi 5 phút)
+#    prediction       → Scheduler: ML Random Forest forecast & advise  (mỗi 5 phút)
+#    clustering       → Scheduler: K-Means/DBSCAN spatial clustering   (mỗi 1 ngày)
+#    frontend         → React + Vite                                   :3000
+#
+#  Khởi chạy:
+#    cp .env.example .env          # điền NASA_USERNAME, NASA_PASSWORD
+#    docker compose up --build
+# =============================================================================
+
+services:
+
+  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: ozone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-ozone_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ozone_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - ozonecast-net
+
+  # ── Database API (FastAPI + SQLAlchemy) ─────────────────────────────────────
+  database-api:
+    build:
+      context: ./services/database-api
+      dockerfile: Dockerfile
+    container_name: ozone-database-api
+    restart: unless-stopped
+    env_file:
+      - ./services/database-api/.env.example   # rename to .env in production
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+      WS_POLL_INTERVAL_SECONDS: ${WS_POLL_INTERVAL_SECONDS:-5}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/database-api/app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ozonecast-net
+
+  # ── Data Ingestion (NASA HDF5/HE5 → PostgreSQL, every 5 min) ────────────────
+  data-ingestion:
+    build:
+      context: ./services/data-ingestion
+      dockerfile: Dockerfile
+    container_name: ozone-data-ingestion
+    restart: unless-stopped
+    env_file:
+      - ./services/data-ingestion/.env.example
+    environment:
+      DATABASE_URL:                postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ozone_db}
+      NASA_DATA_URL:               ${NASA_DATA_URL:-https://omisips1.omisips.eosdis.nasa.gov/data/10da43cd73977b549e32cd346b9f2a2f/OMI-Aura_L2G-OMTO3G_2026m1116_v004-2026m1117t052851.he5}
+      NASA_USERNAME:               ${NASA_USERNAME:-}
+      NASA_PASSWORD:               ${NASA_PASSWORD:-}
+      INGESTION_INTERVAL_SECONDS:  ${INGESTION_INTERVAL_SECONDS:-300}
+      REGION_LAT_MIN:              ${REGION_LAT_MIN:--70}
+      REGION_LAT_MAX:              ${REGION_LAT_MAX:--63}
+      REGION_LON_MIN:              ${REGION_LON_MIN:--75}
+      REGION_LON_MAX:              ${REGION_LON_MAX:--55}
+      DISCOVERY_INTERVAL_SECONDS:  ${DISCOVERY_INTERVAL_SECONDS:-7200}
+      DISCOVERY_START_DATE:        ${DISCOVERY_START_DATE:-2026-11-16}
+    volumes:
+      - ./services/data-ingestion/seed:/app/seed
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ozonecast-net
+
+  # ── Data Analysis (Spatial binning, anomalies, time series — every 5 min) ───
+  data-analysis:
+    build:
+      context: ./services/data-analysis
+      dockerfile: Dockerfile
+    container_name: ozone-data-analysis
+    restart: unless-stopped
+    env_file:
+      - ./services/data-analysis/.env.example
+    environment:
+      DATABASE_API_URL:          http://database-api:8000
+      ANALYSIS_INTERVAL_SECONDS: ${ANALYSIS_INTERVAL_SECONDS:-300}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      database-api:
+        condition: service_started
+    networks:
+      - ozonecast-net
+
+  # ── Prediction (ML Random Forest forecast & UV advisory — every 5 min) ──────
+  prediction:
+    build:
+      context: ./services/prediction
+      dockerfile: Dockerfile
+    container_name: ozone-prediction
+    restart: unless-stopped
+    env_file:
+      - ./services/prediction/.env.example
+    environment:
+      DATABASE_API_URL:            http://database-api:8000
+      PREDICTION_INTERVAL_SECONDS: ${PREDICTION_INTERVAL_SECONDS:-300}
+      MODEL_DIR:                   /app/models
+    volumes:
+      - ./services/prediction/models:/app/models
+      - backend_models:/app/models_backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      database-api:
+        condition: service_started
+    networks:
+      - ozonecast-net
+
+  # ── Spatial Clustering (K-Means & DBSCAN — every 24h) ───────────────────────
+  clustering:
+    build:
+      context: ./services/clustering
+      dockerfile: Dockerfile
+    container_name: ozone-clustering
+    restart: unless-stopped
+    env_file:
+      - ./services/clustering/.env.example
+    environment:
+      DATABASE_API_URL:            http://database-api:8000
+      CLUSTERING_INTERVAL_SECONDS: ${CLUSTERING_INTERVAL_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      database-api:
+        condition: service_started
+    networks:
+      - ozonecast-net
+
+  # ── Frontend (React + Vite + Tailwind) ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ozone-frontend
+    restart: unless-stopped
+    environment:
+      VITE_DB_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - database-api
+    networks:
+      - ozonecast-net
+
+volumes:
+  pgdata:          # PostgreSQL persistent storage
+  backend_models:  # ML model .pkl files persist across restarts
+
+networks:
+  ozonecast-net:
+    driver: bridge
